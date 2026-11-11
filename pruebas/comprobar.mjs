@@ -27,8 +27,14 @@ for(const page of context.pages){
   const html=window.BroteSite.render({activePage:page.id,pages:context.pages.map(p=>p.id)},context.pages);
   assert.ok(html.includes('site-main'),page.id);
 }
+const editor=window.BroteSite.render({activePage:'inicio'},context.pages);
+assert.ok(editor.includes('Editar portada'));
+assert.ok(editor.includes('data-insert-after='));
+const clean=window.BroteSite.render({activePage:'inicio'},context.pages,{clean:true});
+assert.ok(!clean.includes('data-edit-section='));
+assert.ok(!clean.includes('data-insert-after='));
 new vm.Script(window.BroteSite.runtime);
-for(const file of ['script.js','guide.js'])new vm.Script(fs.readFileSync(path.join(root,file),'utf8'));
+for(const file of ['script.js','guide.js','setup.js'])new vm.Script(fs.readFileSync(path.join(root,file),'utf8'));
 const all=[...fs.readdirSync(path.join(root,'assets'))];
 assert.equal(all.filter(f=>f.endsWith('.jpg')).length,6);
 assert.equal(all.filter(f=>f.endsWith('.woff2')).length,3);

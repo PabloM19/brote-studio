@@ -6,7 +6,7 @@ window.createBroteGuide = function (api) {
     ['pages','Confirma tus páginas','Elige tu estructura y pulsa Crear páginas.'],
     ['design','Elige una composición','Aplica un diseño de la biblioteca.'],
     ['identity','Hazla tuya','Cambia un estilo o un ajuste de identidad.'],
-    ['content','Cuenta tu historia','Edita un texto desde Esta página.'],
+    ['content','Cuenta tu historia','Edita un texto desde una sección.'],
     ['mobile','Revisa el móvil','Abre el dispositivo Móvil de la vista previa.'],
     ['export','Guarda una copia','Exporta la configuración de tu proyecto.']
   ];
@@ -15,15 +15,15 @@ window.createBroteGuide = function (api) {
   let dialog, savedUI, returnFocus, tourIndex = -1, resizeFrame;
   const $ = s => document.querySelector(s);
   const steps = [
-    { stage:'pages', target:'.page-option', title:'Empieza por lo que quieres contar.', text:'Busca entre las 35 páginas, explora las categorías o añade una propia. Inicio es esencial; el resto lo eliges tú.' },
-    { stage:'design', target:'.variant-card', title:'El diseño se elige viéndolo.', text:'Explora 73 composiciones en 20 familias. Cada miniatura muestra el componente real; el diseño elegido se aplica a toda tu web.' },
-    { stage:'brand', target:'.preset-card', title:'Dale tu identidad.', text:'Empieza con una paleta o ajusta tu marca, los colores, las fuentes, los espacios y el pie. Tus páginas se conservan.' },
-    { stage:'design', category:'composition', target:'[data-content=title]', title:'Cada página tiene su historia.', text:'Edita títulos y descripciones, añade secciones, cambia su orden o escóndelas. Estos contenidos pertenecen solo a la página elegida.' },
-    { stage:'design', pane:'preview', target:'.page-picker', title:'Muévete por tu web.', text:'Este selector cambia la página de la vista previa. También puedes navegar con los enlaces del propio sitio.' },
-    { stage:'design', pane:'preview', device:'mobile', target:'.canvas-tools', title:'Mira cómo crece en cada pantalla.', text:'Alterna entre escritorio, tableta y móvil. La vista previa tiene un tamaño independiente del editor para comprobar el diseño real.' },
-    { stage:'design', target:'.export-btn', title:'Tu trabajo, a salvo.', text:'Los cambios se guardan en este navegador. Exporta el JSON para conservar una copia o importarlo en otro equipo. Ver sitio abre la vista ampliada.' }
+    { stage:'pages', target:'.editor-page-list', title:'Tus páginas, en un solo lugar.', text:'Abre una página para verla y editarla. En Añadir o quitar páginas puedes ampliar la web, agrupar sus contenidos o crear una página personalizada.' },
+    { stage:'design', category:'hero', target:'.variant-card', title:'Elige el diseño viéndolo.', text:'Selecciona una composición real de la portada. Este diseño se aplica en todas las páginas que usan una portada. Las demás secciones se editan desde la propia web.' },
+    { stage:'brand', target:'.preset-list', title:'Dale tu identidad.', text:'Elige una paleta o abre Colores personalizados y Datos de tu centro. En Ajustes avanzados encontrarás las fuentes, los espacios y la biblioteca completa.' },
+    { stage:'section', target:'#inspector', title:'Edita lo que estás viendo.', text:'Pulsa Editar portada o Editar sección dentro de la web. Se abre un solo panel con sus textos y diseños. Los textos pertenecen a esta página. Puedes ordenar y añadir secciones desde abajo.' },
+    { stage:'preview', target:'.page-picker', title:'Muévete por tu web.', text:'Este selector cambia la página de la vista previa. También puedes navegar con los enlaces del propio sitio. Páginas y Estilo de la web siguen a mano en la barra superior.' },
+    { stage:'preview', device:'mobile', target:'.device-picker', title:'Comprueba cada pantalla.', text:'Alterna entre escritorio, tableta y móvil. Usa Ver sitio para recorrer la propuesta ampliada y probar sus menús, formularios y botones.' },
+    { stage:'preview', target:'.editor-more', title:'Tu trabajo, a salvo.', text:'Los cambios se guardan en este navegador. Abre Más para deshacer, exportar, importar o volver a la configuración inicial y al recorrido guiado.' }
   ];
-  const taskLabels = ['Elegir páginas', 'Explorar componentes', 'Personalizar identidad', 'Editar esta página', 'Ver en móvil', 'Abrir exportación'];
+  const taskLabels = ['Elegir páginas', 'Elegir diseño de portada', 'Personalizar identidad', 'Editar portada', 'Ver en móvil', 'Abrir exportación'];
   function readProgress() {
     try {
       const saved = JSON.parse(localStorage.getItem(key));

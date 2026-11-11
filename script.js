@@ -421,7 +421,9 @@
     ].join(';');
   }
   function editable(content, type, id, clean) {
-    return `<div class="s-editable" data-section-type="${esc(type)}" data-section-id="${esc(id)}">${content}${clean ? '' : `<button type="button" class="s-edit-section" data-edit-section="${esc(id)}" data-edit-type="${esc(type)}">${icon('edit')}<span>Editar sección</span></button>`}</div>`;
+    const label = ({hero:'portada', navbar:'menú', footer:'pie de página'})[type] || 'sección';
+    const insert = ['navbar','footer'].includes(type) ? '' : `<button type="button" class="s-insert-section" data-insert-after="${esc(id)}" aria-label="Añadir una sección después de esta">${icon('plus')}</button>`;
+    return `<div class="s-editable" data-section-type="${esc(type)}" data-section-id="${esc(id)}">${content}${clean ? '' : `<button type="button" class="s-edit-section" data-edit-section="${esc(id)}" data-edit-type="${esc(type)}">${icon('edit')}<span>Editar ${label}</span></button>${insert}`}</div>`;
   }
   function render(state, pages, opts = {}) {
     const ctx = context(state,pages);
@@ -471,6 +473,8 @@
       root.addEventListener('click', event => {
         const edit = event.target.closest('[data-edit-section]');
         if (edit) {event.preventDefault();send('edit',{sectionId:edit.dataset.editSection,sectionType:edit.dataset.editType});return;}
+        const insert = event.target.closest('[data-insert-after]');
+        if (insert) {event.preventDefault();send('insert',{after:insert.dataset.insertAfter});return;}
         const toggle = event.target.closest('[data-menu-toggle]');
         if (toggle) {const nav=toggle.closest('.s-nav');const open=nav.classList.toggle('is-menu-open');toggle.setAttribute('aria-expanded',String(open));toggle.setAttribute('aria-label',open?'Cerrar menú':'Abrir menú');return;}
         const filter=event.target.closest('[data-catalog-filter]');
@@ -525,7 +529,10 @@
           const target=nodes.find(node=>message.sectionId?node.dataset.sectionId===message.sectionId:node.dataset.sectionType===message.sectionType);
           if(target){target.scrollIntoView({behavior:'smooth',block:'start'});target.classList.add('s-section-highlight');setTimeout(()=>target.classList.remove('s-section-highlight'),1600);}
         }
-        if(message.type==='set-scroll')window.scrollTo({top:Number(message.top)||0,behavior:'instant'});
+        if(message.type==='set-scroll'){
+          const top=Number(message.top)||0;
+          document.fonts.ready.then(()=>requestAnimationFrame(()=>window.scrollTo({top,behavior:'instant'})));
+        }
         if(message.type==='get-scroll')send('scroll',{top:window.scrollY});
       });
       let scrollTick=false;
@@ -589,6 +596,7 @@
     layers: '<path d="m12 3 10 5-10 5L2 8l10-5Zm-10 9 10 5 10-5M2 16l10 5 10-5"/>',
     code: '<path d="m7 6-5 6 5 6m10-12 5 6-5 6M14 3l-4 18"/>',
     spark: '<path d="m12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5L12 3Z"/>',
+    edit: '<path d="m15 4 5 5M4 20l4-1L21 6a2.8 2.8 0 0 0-4-4L4 15Z"/>',
     menu: '<path d="M4 6h16M4 12h16M4 18h16"/>',
     history: '<path d="M3 10a9 9 0 1 1 2 8M3 4v6h6M12 7v6l3 2"/>',
     pin: '<path d="M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="3"/>',
@@ -721,7 +729,7 @@
       hasProject = true;
     }
   } catch { storageAvailable = false; }
-  const ui = { stage: state.generated ? 'design' : 'pages', category: 'navbar', pageGroup: 'Todas', pageSearch: '', componentSearch: '', identity: 'presets', device: window.innerWidth <= 700 ? 'mobile' : 'desktop', sampleDevice: 'desktop', canvasMode: 'page', actualSize: false, mobilePane: 'editor', selectedSection: null };
+  const ui = { stage: 'preview', category: 'navbar', pageGroup: 'Todas', pageSearch: '', componentSearch: '', device: window.innerWidth <= 700 ? 'mobile' : 'desktop', sampleDevice: 'desktop', canvasMode: 'page', actualSize: false, selectedSection: null, panelBack: null, insertAfter: null };
   const undoStack = [], redoStack = [];
   let editBefore = null, previewTimer, saveTimer, toastTimer, resizeObserver, lastFocusType = null;
   const catalog = () => [...PAGES, ...state.customPages];
@@ -729,17 +737,22 @@
   const currentContent = () => state.pageContent[state.activePage];
   const guide = window.createBroteGuide({
     icon, toast,
-    snapshot: () => ({ ui: clone(ui), panelScroll: $('.panel-body')?.scrollTop || 0, railScroll: $('#rail-content')?.scrollTop || 0 }),
-    restore: saved => { Object.assign(ui, saved.ui); render(); if ($('.panel-body')) $('.panel-body').scrollTop = saved.panelScroll; if ($('#rail-content')) $('#rail-content').scrollTop = saved.railScroll; },
+    snapshot: () => ({ ui: clone(ui), panelScroll: $('.panel-body')?.scrollTop || 0, disclosures: $$('[data-disclosure][open]').map(el => el.dataset.disclosure) }),
+    restore: saved => {
+      Object.assign(ui, saved.ui);
+      render();
+      $$('[data-disclosure]').forEach(el => { el.open = saved.disclosures.includes(el.dataset.disclosure); });
+      if ($('.panel-body')) $('.panel-body').scrollTop = saved.panelScroll;
+    },
     navigate: guideNavigation,
     openTask(id) {
       if (id === 'export') { $('.export-btn').click(); return; }
       const destinations = {
         pages: {stage:'pages'},
-        design: {stage:'design'},
+        design: {stage:'design', category:'hero'},
         identity: {stage:'brand'},
-        content: {stage:'design', category:'composition'},
-        mobile: {stage:ui.stage, category:ui.category, identity:ui.identity, device:'mobile', pane:'preview'}
+        content: {stage:'section'},
+        mobile: {stage:'preview', device:'mobile'}
       };
       if (!destinations[id]) return;
       guideNavigation(destinations[id]);
@@ -749,7 +762,7 @@
       } else $('#inspector').focus();
     },
     openSetup: () => setup.open({ hasProject: true }),
-    choosePages: () => { ui.stage = 'pages'; ui.mobilePane = 'editor'; render(); $('#inspector').focus(); }
+    choosePages: () => showPanel('pages')
   });
   const setup = window.createBroteSetup({
     icon,
@@ -776,11 +789,8 @@
         if (editorStarted) { finishEdit(); remember(); }
         state = applySetupChoices(draft);
         hasProject = true;
-        ui.stage = 'design';
-        ui.category = 'navbar';
-        ui.canvasMode = 'page';
-        ui.mobilePane = 'editor';
-        ui.selectedSection = null;
+        Object.assign(ui, {stage:'preview', canvasMode:'page', selectedSection:null, panelBack:null});
+        state.activePage = 'inicio';
         try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); storageAvailable = true; }
         catch { storageAvailable = false; }
         guide.credit(['pages','design','identity']);
@@ -853,26 +863,25 @@
     };
   }
   function guideNavigation(step) {
-    finishEdit();
-    Object.assign(ui, {
-      stage:step.stage, category:step.category || 'navbar', identity:step.identity || 'presets',
-      mobilePane:step.pane || 'editor', device:step.device || ui.device, selectedSection:null, canvasMode:'page'
+    const cover = firstCover();
+    const stage = step.stage === 'section' && !cover ? 'order' : step.stage;
+    showPanel(stage, {
+      category:step.category || 'navbar', device:step.device || ui.device,
+      selectedSection: stage === 'section' ? cover.id : null
     });
-    if (step.stage === 'pages') { ui.pageGroup = 'Todas'; ui.pageSearch = ''; }
-    render();
+    syncPreviewControls();
   }
   function remember() { undoStack.push(JSON.stringify(state)); if (undoStack.length > 50) undoStack.shift(); redoStack.length = 0; }
-  const viewKey = () => `${ui.stage}:${ui.stage === 'pages' ? ui.pageGroup : ui.stage === 'design' ? ui.category : ui.identity}:${state.activePage}`;
+  const viewKey = () => `${ui.stage}:${ui.stage === 'design' ? ui.category : ui.selectedSection || ''}:${state.activePage}`;
   function change(fn, refresh = 'all') {
     finishEdit(); remember();
-    const beforeKey = viewKey(), panelScroll = $('.panel-body')?.scrollTop || 0, railScroll = $('#rail-content')?.scrollTop || 0;
+    const beforeKey = viewKey(), panelScroll = $('.panel-body')?.scrollTop || 0;
     const focused = document.activeElement;
-    const focusInfo = focused?.dataset?.pageToggle ? { page: focused.dataset.pageToggle } : focused?.dataset?.action ? { action: focused.dataset.action, value: focused.dataset.value } : null;
+    const focusInfo = focused?.dataset?.pageToggle ? { page: focused.dataset.pageToggle } : focused?.dataset?.action ? { action: focused.dataset.action, value: focused.dataset.value, family: focused.dataset.family } : null;
     fn(); persist(); refresh === 'all' ? render() : refresh === 'panel' ? (renderPanel(), renderPreview()) : renderPreview();
     if (beforeKey === viewKey()) {
       if ($('.panel-body')) $('.panel-body').scrollTop = panelScroll;
-      if ($('#rail-content')) $('#rail-content').scrollTop = railScroll;
-      const target = focusInfo?.page ? $(`[data-page-toggle="${focusInfo.page}"]`) : focusInfo?.action ? $$('[data-action]').find(e => e.dataset.action === focusInfo.action && e.dataset.value === focusInfo.value) : null;
+      const target = focusInfo?.page ? $(`[data-page-toggle="${focusInfo.page}"]`) : focusInfo?.action ? $$('[data-action]').find(e => e.dataset.action === focusInfo.action && e.dataset.value === focusInfo.value && e.dataset.family === focusInfo.family) : null;
       target?.focus({ preventScroll: true });
     }
     updateHistory();
@@ -890,47 +899,125 @@
   function pageOptions() { return catalog().filter(p => state.pages.includes(p.id)).map(p => `<option value="${p.id}" ${p.id === state.activePage ? 'selected' : ''}>${esc(p.name)}</option>`).join(''); }
 
   function render() {
-    if (ui.pageGroup === 'Personalizadas' && !state.customPages.length) ui.pageGroup = 'Todas';
-    if (ui.selectedSection && !currentContent().sections.some(s => s.id === ui.selectedSection)) ui.selectedSection = null;
-    $('#app').innerHTML = `
-      <header class="app-header">
-        <a class="app-brand" href="#" data-action="home" aria-label="Brote Studio, inicio"><span class="brand-mark">${icon('sprout', 25)}</span><span class="brand-word">brote<span>STUDIO</span></span></a>
+    if (!$('#editor-workspace')) $('#app').innerHTML = `
+      <header class="app-header editor-header">
+        <a class="app-brand" href="#" data-action="home" aria-label="Brote Studio, volver a la vista previa"><span class="brand-mark">${icon('sprout', 25)}</span><span class="brand-word">brote<span>STUDIO</span></span></a>
         <span class="header-divider"></span>
-        <div class="project-name"><span id="header-project">${esc(state.settings.brand || 'Mi centro de jardinería')}</span><span class="draft-badge">Borrador</span></div>
-        <div class="header-actions"><div class="history-actions">${iconBtn('undo', 'undo', 'Deshacer · Ctrl / ⌘ Z', !undoStack.length ? 'disabled' : '')}${iconBtn('redo', 'redo', 'Rehacer · Ctrl / ⌘ Mayús Z', !redoStack.length ? 'disabled' : '')}</div><button class="ui-btn guide-btn" data-action="help" aria-label="Primeros pasos de Brote Studio">${icon('help', 16)}<span>Primeros pasos</span><small data-guide-count>0/6</small></button><button class="ui-btn export-btn" data-action="export" aria-label="Exportar">${icon('download', 16)}<span>Exportar</span></button><button class="ui-btn primary preview-button" data-action="preview">${icon('eye', 17)}<span>Ver sitio</span></button></div>
+        <div class="project-name"><span id="header-project">${esc(state.settings.brand)}</span></div>
+        <nav class="header-actions" aria-label="Editor del sitio">
+          <button class="ui-btn editor-nav" data-action="stage" data-value="pages" aria-controls="inspector">${icon('pages', 16)}<span>Páginas</span></button>
+          <button class="ui-btn editor-nav" data-action="stage" data-value="brand" aria-controls="inspector">${icon('palette', 16)}<span>Estilo de la web</span></button>
+          <button class="ui-btn primary preview-button" data-action="preview">${icon('eye', 17)}<span>Ver sitio</span></button>
+          <details class="editor-more"><summary aria-label="Más opciones">Más ${icon('down', 13)}</summary><div class="editor-menu">
+            <button class="ui-btn" data-action="undo">${icon('undo', 16)} Deshacer</button>
+            <button class="ui-btn" data-action="redo">${icon('redo', 16)} Rehacer</button>
+            <button class="ui-btn guide-btn" data-action="help">${icon('help', 16)} Primeros pasos</button>
+            <button class="ui-btn" data-action="setup">${icon('spark', 16)} Abrir configuración inicial</button>
+            <button class="ui-btn export-btn" data-action="export">${icon('download', 16)} Exportar e importar</button>
+          </div></details>
+        </nav>
       </header>
-      <div class="mobile-pane-tabs"><button data-action="mobile-pane" data-value="editor" class="${ui.mobilePane === 'editor' ? 'active' : ''}">${icon('sliders', 16)}Personalizar</button><button data-action="mobile-pane" data-value="preview" class="${ui.mobilePane === 'preview' ? 'active' : ''}">${icon('eye', 16)}Vista en directo</button></div>
-      <main class="app-workspace mobile-${ui.mobilePane}">
-        <aside class="rail" aria-label="Pasos y categorías"><div class="steps-label">TU PRÓXIMA WEB</div><nav class="step-nav" aria-label="Pasos del proyecto">${[['pages', 'Páginas', 'pages', '01'], ['design', 'Componentes', 'layout', '02'], ['brand', 'Identidad', 'palette', '03']].map(([id, name, sym, number]) => `<button data-action="stage" data-value="${id}" class="step-btn ${ui.stage === id ? 'active' : ''}" ${ui.stage === id ? 'aria-current="step"' : ''}><span class="step-icon">${icon(sym, 18)}</span><span>${name}</span><span class="step-number">${state.generated && id === 'pages' ? icon('check', 13) : number}</span></button>`).join('')}</nav><div id="rail-content"></div><div class="rail-bottom"><div class="rail-tip">${icon('sprout', 20)}<span>De una buena idea<br><strong>nace una gran web.</strong></span></div><button class="guide-sidebar" data-action="help" data-guide-sidebar><span>Tu web, paso a paso <b data-guide-count>0/6</b></span><i aria-hidden="true"></i><small></small></button></div></aside>
-        <section class="inspector" id="inspector" tabindex="-1" aria-label="Personalizador"><div id="inspector-content"></div></section>
-        <section class="canvas-area" aria-label="Vista previa interactiva"><div class="canvas-heading"><div><div class="eyebrow">UN ESPACIO PARA TU NATURALEZA</div><h1>Tu web, tomando forma<span>.</span></h1></div><span class="live-indicator"><i></i> En directo</span></div>
-          <div class="canvas-tools"><div class="page-picker">${icon('pages', 15)}<select id="preview-page" aria-label="Página de la vista previa">${pageOptions()}</select>${icon('down', 13)}</div><div class="device-picker" role="group" aria-label="Dispositivo de la vista previa">${[['desktop', 'desktop', 'Escritorio'], ['tablet', 'tablet', 'Tableta'], ['mobile', 'mobile', 'Móvil']].map(([id, sym, label]) => `<button data-action="device" data-value="${id}" class="${ui.device === id ? 'active' : ''}" title="${label}" aria-label="${label}" aria-pressed="${ui.device === id}">${icon(sym, 18)}</button>`).join('')}</div><div class="canvas-tool-right"><button class="icon-btn canvas-size" data-action="actual-size" id="canvas-scale" type="button" aria-label="Tamaño real de la vista previa" aria-pressed="${ui.actualSize}">100%</button>${iconBtn('preview', 'expand', 'Ampliar vista previa')}</div></div>
-          <div class="canvas-stage" id="canvas-stage"><div class="browser-frame" id="browser-frame"><div class="browser-chrome"><div class="window-dots"><i></i><i></i><i></i></div><div class="browser-address">${icon('lock', 10)}<span id="browser-address">${slug(state.settings.brand)}.demo/${state.activePage === 'inicio' ? '' : currentPage().id}</span></div><span class="browser-label">VISTA PREVIA</span></div><div class="frame-viewport" id="frame-viewport"><iframe id="site-frame" title="Vista previa de tu centro de jardinería" sandbox="allow-scripts allow-same-origin allow-forms" referrerpolicy="no-referrer"></iframe></div></div></div>
-          <div class="canvas-bottom"><span id="canvas-hint">${icon('spark', 14)} Cada elección se aplica a toda tu web.</span><button class="quiet-link" data-action="composition">${icon('layers', 14)} Editar esta página</button></div>
+      <main class="app-workspace editor-workspace" id="editor-workspace" tabindex="-1">
+        <section class="canvas-area" aria-label="Vista previa interactiva">
+          <div class="canvas-tools"><div class="canvas-page"><label class="page-picker">${icon('pages', 16)}<select id="preview-page" aria-label="Página de la vista previa">${pageOptions()}</select>${icon('down', 13)}</label><button class="ui-btn canvas-edit" data-action="edit-cover">${icon('edit', 15)} Editar portada</button></div>
+            <div class="canvas-tool-right"><div class="device-picker" role="group" aria-label="Dispositivo de la vista previa">${[['desktop', 'desktop', 'Escritorio'], ['tablet', 'tablet', 'Tableta'], ['mobile', 'mobile', 'Móvil']].map(([id, sym, label]) => `<button data-action="device" data-value="${id}" class="${ui.device === id ? 'active' : ''}" title="${label}" aria-label="${label}" aria-pressed="${ui.device === id}">${icon(sym, 17)}</button>`).join('')}</div><button class="icon-btn canvas-size" data-action="actual-size" id="canvas-scale" type="button" aria-label="Tamaño real de la vista previa" aria-pressed="${ui.actualSize}">100%</button></div>
+          </div>
+          <div class="canvas-stage" id="canvas-stage"><div class="browser-frame" id="browser-frame"><div class="browser-chrome"><div class="window-dots" aria-hidden="true"><i></i><i></i><i></i></div><div class="browser-address">${icon('lock', 10)}<span id="browser-address"></span></div></div><div class="frame-viewport" id="frame-viewport"><iframe id="site-frame" title="Vista previa de tu centro de jardinería" sandbox="allow-scripts allow-same-origin allow-forms" referrerpolicy="no-referrer"></iframe></div></div></div>
+          <div class="canvas-bottom"><span id="save-status" role="status"></span><div class="canvas-actions"><button class="ui-btn" data-action="composition">${icon('layers', 15)} Ordenar secciones</button><button class="ui-btn" data-action="add-section">${icon('plus', 16)} Añadir sección</button></div></div>
         </section>
-      </main>
-      <footer class="app-status"><span><i class="status-dot"></i> Prototipo interactivo <span class="status-separator">/</span> <span class="status-wordpress">Preparado para imaginar tu WordPress</span></span><span id="save-status"></span><span class="version-label">BROTE · V0.1</span></footer>`;
-    renderRail(); renderPanel(); renderPreview(); updateSave(); guide.refresh();
-    resizeObserver?.disconnect(); resizeObserver = new ResizeObserver(fitPreview); resizeObserver.observe($('#canvas-stage'));
+        <aside class="inspector" id="inspector" tabindex="-1" aria-labelledby="panel-title" hidden><div id="inspector-content"></div></aside>
+      </main>`;
+    if (ui.pageGroup === 'Personalizadas' && !state.customPages.length) ui.pageGroup = 'Todas';
+    if (ui.stage === 'section' && !currentContent().sections.some(s => s.id === ui.selectedSection)) {
+      Object.assign(ui, { stage:'order', selectedSection:null, panelBack:null });
+    }
+    syncPreviewControls();
+    renderPanel(); renderPreview(); updateSave(); updateHistory(); guide.refresh();
+    if (!resizeObserver) {
+      resizeObserver = new ResizeObserver(fitPreview);
+      resizeObserver.observe($('#canvas-stage'));
+    }
   }
-  function renderRail() {
-    const root = $('#rail-content');
-    if (ui.stage === 'pages') root.innerHTML = `<div class="rail-section-title">EXPLORA LAS PÁGINAS</div><nav class="category-nav">${[...PAGE_GROUPS, ...(state.customPages.length ? ['Personalizadas'] : [])].map((g, i) => `<button data-action="page-group" data-value="${g}" class="${ui.pageGroup === g ? 'active' : ''}"><span>${icon(['grid', 'pages', 'leaf', 'tag', 'spark', 'image', 'lock', 'pages'][i], 16)}${g}</span><small>${g === 'Todas' ? catalog().length : catalog().filter(p => p.group === g).length}</small></button>`).join('')}</nav><div class="rail-note">Empieza con lo esencial.<br>Siempre puedes añadir más.</div>`;
-    else if (ui.stage === 'design') {
-      const filtered = CATEGORIES.filter(c => c.name.toLowerCase().includes(ui.componentSearch.toLowerCase()));
-      root.innerHTML = `<div class="rail-section-title">BIBLIOTECA <span>${TOTAL_VARIANTS}</span></div><label class="rail-search">${icon('search', 14)}<input id="component-search" placeholder="Buscar componente" aria-label="Buscar componente" value="${esc(ui.componentSearch)}"></label><nav class="category-nav component-nav"><button data-action="composition" class="composition-nav ${ui.category === 'composition' ? 'active' : ''}"><span>${icon('layers', 16)}Esta página</span><small>${currentContent().sections.length}</small></button>${['Estructura', 'Elementos', 'Secciones'].map(g => `<div class="nav-group-label">${g}</div>${filtered.filter(c => c.group === g).map(c => `<button data-action="category" data-value="${c.id}" class="${ui.category === c.id ? 'active' : ''}"><span>${icon(c.icon, 16)}${c.name}</span><small>${c.variants.length}</small></button>`).join('')}`).join('')}${!filtered.length ? '<p class="empty-inline">No hay coincidencias.</p>' : ''}</nav>`;
-    } else root.innerHTML = `<div class="rail-section-title">HAZLA TUYA</div><nav class="category-nav">${[['presets', 'Estilos de partida', 'spark'], ['brand', 'Tu centro', 'sprout'], ['colors', 'Colores', 'palette'], ['type', 'Tipografía', 'type'], ['layout', 'Formas y espacios', 'sliders'], ['footer', 'Contenido del pie', 'footer']].map(([id, title, sym]) => `<button data-action="identity" data-value="${id}" class="${ui.identity === id ? 'active' : ''}"><span>${icon(sym, 17)}${title}</span>${icon('chevron', 12)}</button>`).join('')}</nav><div class="rail-note">Una identidad coherente.<br>En cada página y cada detalle.</div>`;
+  function syncPreviewControls() {
+    const pageSelect = $('#preview-page');
+    const options = pageOptions();
+    if (pageSelect.dataset.options !== options) {
+      pageSelect.innerHTML = options;
+      pageSelect.dataset.options = options;
+    }
+    pageSelect.value = state.activePage;
+    $('#header-project').textContent = state.settings.brand;
+    $$('.device-picker button').forEach(button => {
+      const active = button.dataset.value === ui.device;
+      button.classList.toggle('active', active);
+      button.setAttribute('aria-pressed', String(active));
+    });
+    fitPreview();
   }
-  function panelHeader(kicker, title, text, count = '') { return `<div class="panel-heading"><div class="eyebrow">${kicker}</div><div class="panel-title-row"><h2>${title}</h2>${count ? `<span class="count-badge">${count}</span>` : ''}</div><p>${text}</p></div>`; }
+
+  const disclosure = (id, label, content) => `<details class="editor-disclosure" data-disclosure="${id}"><summary>${label}${icon('down', 14)}</summary><div class="disclosure-body">${content}</div></details>`;
+  const pageScope = () => `<span class="editor-scope">${icon('pages', 13)} Solo esta página · ${esc(currentPage().name)}</span>`;
+  const siteScope = () => `<span class="editor-scope">${icon('globe', 13)} Todas las páginas</span>`;
+  const family = type => CATEGORIES.find(c => c.id === type);
+  const sectionName = type => ({hero:'Portada',navbar:'Menú de navegación',gallery:'Galería',forms:'Formulario',cta:'Llamada a la acción'})[type] || family(type).name;
+  const firstCover = () => currentContent().sections.find(s => s.type === 'hero' && !s.hidden);
+  let panelKey = '';
+
   function renderPanel() {
-    if (ui.stage === 'pages') renderPages();
-    else if (ui.stage === 'design' && ui.category === 'composition') renderComposition();
-    else if (ui.stage === 'design') renderComponents();
-    else renderIdentity();
+    const key = viewKey();
+    const open = panelKey === key ? $$('[data-disclosure][open]').map(el => el.dataset.disclosure) : [];
+    panelKey = key;
+    const inspector = $('#inspector');
+    inspector.hidden = ui.stage === 'preview';
+    $('.editor-workspace').classList.toggle('has-inspector', !inspector.hidden);
+    $$('.editor-nav').forEach(button => button.setAttribute('aria-expanded', String(button.dataset.value === ui.stage)));
+    $('[data-action="edit-cover"]').hidden = !firstCover() || ui.canvasMode === 'component';
+    if (inspector.hidden) {
+      $('#inspector-content').replaceChildren();
+      return;
+    }
+
+    const section = currentContent().sections.find(s => s.id === ui.selectedSection);
+    const panels = {
+      pages: ['Páginas', siteScope, renderPages],
+      brand: ['Estilo de la web', siteScope, renderIdentity],
+      order: ['Ordenar secciones', pageScope, renderComposition],
+      add: ['Añadir sección', pageScope, renderSectionPicker],
+      design: [sectionName(ui.category), siteScope, renderComponents],
+      section: [section ? sectionName(section.type) : 'Secciones', pageScope, section ? () => renderSectionEditor(section) : renderComposition]
+    };
+    const [title, scope, body] = panels[ui.stage];
+    const back = ui.panelBack ? `<button class="quiet-link panel-back" data-action="panel-back">${icon('chevron', 13)} Volver a ${ui.panelBack.stage === 'brand' ? 'Estilo de la web' : 'Ordenar secciones'}</button>` : '';
+    $('#inspector-content').innerHTML = `<div class="editor-panel-heading">${back}<div><h2 id="panel-title">${title}</h2>${iconBtn('close-panel', 'close', 'Cerrar panel')}</div>${scope()}</div><div class="panel-body">${body()}</div>`;
+    $$('[data-disclosure]').forEach(el => { el.open = open.includes(el.dataset.disclosure); });
+    hydrateSamples();
   }
+
+  function showPanel(stage, options = {}) {
+    finishEdit();
+    const wasSample = ui.canvasMode === 'component';
+    Object.assign(ui, { stage, selectedSection:null, panelBack:null, insertAfter:null, canvasMode:'page', ...options });
+    renderPanel();
+    if (wasSample || ui.canvasMode === 'component') renderPreview();
+    if (stage !== 'preview') $('#inspector').focus({preventScroll:true});
+    requestAnimationFrame(fitPreview);
+  }
+
   function renderPages() {
-    const list = catalog().filter(p => (ui.pageGroup === 'Todas' || p.group === ui.pageGroup) && (p.name + ' ' + p.description).toLowerCase().includes(ui.pageSearch.toLowerCase()));
-    $('#inspector-content').innerHTML = `${panelHeader('01 / ESTRUCTURA', 'Todo empieza aquí.', '¿Qué necesita contar tu centro? Elige las páginas que formarán tu web.')}<div class="panel-body pages-body"><label class="search-field">${icon('search', 16)}<input id="page-search" value="${esc(ui.pageSearch)}" placeholder="Buscar una página…" aria-label="Buscar una página"></label><div class="selection-summary"><span>${ui.pageGroup === 'Todas' ? 'Páginas recomendadas y más' : ui.pageGroup}</span><button data-action="select-group">Seleccionar todas</button></div><div class="page-list">${list.map(p => `<label class="page-option ${state.pages.includes(p.id) ? 'selected' : ''} ${p.id === 'inicio' ? 'required' : ''}"><input type="checkbox" data-page-toggle="${p.id}" ${state.pages.includes(p.id) ? 'checked' : ''} ${p.id === 'inicio' ? 'disabled' : ''}><span class="custom-check">${icon('check', 12)}</span><span class="page-option-text"><strong>${esc(p.name)}${p.id === 'inicio' ? '<small>Esencial</small>' : ''}</strong><span>${esc(p.description)}</span></span>${p.id === 'inicio' ? icon('lock', 13) : ''}</label>`).join('') || `<div class="empty-state">${icon('search', 28)}<h3>No encontramos esa página</h3><p>Puedes añadirla con el nombre que quieras.</p></div>`}</div><button class="dashed-btn" data-action="add-page">${icon('plus', 16)}Añadir página personalizada</button><div class="small-tip">${icon('spark', 16)}Creamos una estructura de ejemplo para cada tipo de página. Después podrás ajustar sus secciones.</div></div><div class="panel-footer"><div><strong>${state.pages.length} páginas</strong><span>Tu estructura, lista para crecer</span></div><button class="ui-btn primary" data-action="generate">${state.generated ? 'Continuar' : 'Crear páginas'}${icon('arrow', 16)}</button></div>`;
+    const all = catalog();
+    const selected = all.filter(p => state.pages.includes(p.id));
+    const groups = [...new Set(selected.map(p => p.group))];
+    return `<div class="editor-page-list">${groups.map(group => `<h3>${esc(group)}</h3>${selected.filter(p => p.group === group).map(p => `<button class="editor-row" data-action="choose-page" data-value="${p.id}" ${p.id === state.activePage ? 'aria-current="page"' : ''}>${icon('pages', 16)}<strong>${esc(p.name)}</strong>${icon(p.id === state.activePage ? 'check' : 'chevron', 14)}</button>`).join('')}`).join('')}</div>
+      ${disclosure('more-pages', 'Añadir o quitar páginas', `<label class="search-field">${icon('search', 16)}<input id="page-search" value="${esc(ui.pageSearch)}" placeholder="Buscar una página" aria-label="Buscar una página"></label><label class="field-label"><span>Categoría</span><select id="page-group">${[...PAGE_GROUPS, ...(state.customPages.length ? ['Personalizadas'] : [])].map(group => `<option ${group === ui.pageGroup ? 'selected' : ''}>${group}</option>`).join('')}</select></label><div class="selection-summary"><button data-action="select-group">Seleccionar todas las de esta lista</button></div><div class="page-list">${pageChoices()}</div>`)}
+      <button class="dashed-btn" data-action="add-page">${icon('plus', 16)} Crear página personalizada</button>
+      ${state.generated ? '' : '<button class="ui-btn primary full-width" data-action="generate">Crear páginas</button>'}`;
+  }
+  function filteredPages() {
+    const search = ui.pageSearch.trim().toLocaleLowerCase('es');
+    return catalog().filter(p => (ui.pageGroup === 'Todas' || p.group === ui.pageGroup) && (p.name + ' ' + p.description).toLocaleLowerCase('es').includes(search));
+  }
+  function pageChoices() {
+    return filteredPages().map(p => `<label class="page-option ${state.pages.includes(p.id) ? 'selected' : ''}"><input type="checkbox" data-page-toggle="${p.id}" ${state.pages.includes(p.id) ? 'checked' : ''} ${p.id === 'inicio' ? 'disabled' : ''}><span class="custom-check">${icon('check', 12)}</span><span class="page-option-text"><strong>${esc(p.name)}</strong><span>${esc(p.description)}</span></span>${p.id === 'inicio' ? icon('lock', 13) : ''}</label>`).join('') || '<p class="editor-note">No se han encontrado páginas.</p>';
   }
   const toggle = (label, key, checked, group = 'settings', caption = '') => `<label class="setting-toggle"><span><strong>${label}</strong>${caption ? `<small>${caption}</small>` : ''}</span><input type="checkbox" data-toggle="${key}" data-group="${group}" ${checked ? 'checked' : ''}><span class="switch"></span></label>`;
   const selectField = (label, key, options, value) => `<label class="field-label"><span>${label}</span><select data-setting="${key}">${options.map(([id, text]) => `<option value="${id}" ${String(value) === String(id) ? 'selected' : ''}>${text}</option>`).join('')}</select></label>`;
@@ -949,15 +1036,65 @@
     if (['navbar', 'footer', 'buttons'].includes(type)) return true;
     return visible.includes(type);
   }
+  function variants(c) {
+    return `<div class="variant-toolbar"><span>Vista del ejemplo</span><div class="mini-device-picker">${[['desktop','Escritorio'],['mobile','Móvil']].map(([device,label]) => `<button data-action="sample-device" data-value="${device}" class="${ui.sampleDevice === device ? 'active' : ''}" aria-pressed="${ui.sampleDevice === device}" aria-label="Ejemplos en ${label.toLowerCase()}">${icon(device, 14)}</button>`).join('')}</div></div>
+      <div class="variant-list">${c.variants.map((name, i) => `<button class="variant-card ${state.components[c.id] === i ? 'selected' : ''}" data-action="variant" data-family="${c.id}" data-value="${i}" aria-pressed="${state.components[c.id] === i}"><div class="variant-thumbnail ${ui.sampleDevice === 'mobile' ? 'mobile-sample' : ''}" data-sample="${c.id}" data-index="${i}"><iframe tabindex="-1" aria-hidden="true" title="Ejemplo ${esc(name)}" sandbox="allow-same-origin"></iframe><span class="variant-check">${icon('check', 12)}</span></div><div class="variant-caption"><div><strong>${name}</strong>${c.hints?.[i] ? `<span>${c.hints[i]}</span>` : ''}</div></div></button>`).join('')}</div>`;
+  }
+  function globalDesign(type, label = 'Cambiar diseño') {
+    return disclosure(`design-${type}`, label, `<p class="editor-note">Este diseño se aplica en todas las páginas que usan este componente.</p>${variants(family(type))}`);
+  }
   function renderComponents() {
-    const c = CATEGORIES.find(c => c.id === ui.category) || CATEGORIES[0];
-    const inPage = componentVisible(c.id);
-    $('#inspector-content').innerHTML = `${panelHeader('02 / DISEÑO', c.name, c.desc, c.variants.length)}<div class="scope-note">${icon('globe', 13)}Estilo global · todas las páginas</div><div class="panel-body variants-body"><div class="variant-toolbar"><span>ELIGE UNA COMPOSICIÓN</span><div class="mini-device-picker"><button data-action="sample-device" data-value="desktop" class="${ui.sampleDevice === 'desktop' ? 'active' : ''}" aria-label="Ejemplos en escritorio" title="Ejemplos en escritorio">${icon('desktop', 14)}</button><button data-action="sample-device" data-value="mobile" class="${ui.sampleDevice === 'mobile' ? 'active' : ''}" aria-label="Ejemplos en móvil" title="Ejemplos en móvil">${icon('mobile', 14)}</button></div></div><div class="variant-list">${c.variants.map((name, i) => `<button class="variant-card ${state.components[c.id] === i ? 'selected' : ''}" data-action="variant" data-value="${i}" aria-pressed="${state.components[c.id] === i}"><div class="variant-thumbnail ${ui.sampleDevice === 'mobile' ? 'mobile-sample' : ''}" data-sample="${c.id}" data-index="${i}"><iframe tabindex="-1" aria-hidden="true" title="Ejemplo ${esc(name)}" sandbox="allow-same-origin"></iframe><span class="variant-check">${icon('check', 12)}</span></div><div class="variant-caption"><div><strong>${name}</strong><span>${c.hints?.[i] || ['Una composición clara y equilibrada.', 'Otra forma de organizar tu contenido.', 'Más protagonismo para cada detalle.', 'Un enfoque con personalidad.'][i % 4]}</span></div><span class="variant-number">0${i + 1}</span></div></button>`).join('')}</div>${componentSettings(c.id)}${!inPage && SECTION_TYPES.some(s => s.id === c.id) ? `<div class="component-absent">${icon('layers', 19)}<p>Esta sección aún no está en <strong>${esc(currentPage().name)}</strong>.</p><button class="ui-btn" data-action="add-current-component">${icon('plus', 15)}Añadir a esta página</button></div>` : ''}<div class="small-tip">${icon('palette', 16)}¿Colores, fuentes o bordes? Los encontrarás en Identidad.</div></div><div class="panel-footer compact"><span>${icon('check', 14)}<strong>${esc(c.variants[state.components[c.id]])}</strong> aplicado</span><button class="quiet-link" data-action="canvas-mode">${ui.canvasMode === 'component' ? 'Ver página' : 'Aislar ejemplo'}${icon('arrow', 13)}</button></div>`;
-    hydrateSamples();
+    const c = family(ui.category);
+    const settings = componentSettings(c.id);
+    const canAdd = !componentVisible(c.id) && SECTION_TYPES.includes(c);
+    return `${settings}${variants(c)}${canAdd ? `<button class="dashed-btn" data-action="insert-section" data-value="${c.id}">${icon('plus', 16)} Añadir a ${esc(currentPage().name)}</button>` : ''}
+      <button class="ui-btn full-width" data-action="canvas-mode">${ui.canvasMode === 'component' ? 'Volver a ver la página' : 'Ver solo este componente'}</button>`;
+  }
+  function pageText() {
+    return `<label class="field-label"><span>Título</span><textarea rows="2" maxlength="180" data-content="title">${esc(currentContent().title)}</textarea></label><label class="field-label"><span>Descripción</span><textarea rows="4" maxlength="600" data-content="description">${esc(currentContent().description)}</textarea></label>`;
+  }
+  function sectionText(section) {
+    const usesPage = section.id === currentContent().sections.find(s => s.type === 'hero')?.id;
+    const title = usesPage && !section.title ? 'data-content="title"' : `data-section-field="title" data-section-id="${section.id}"`;
+    const description = usesPage && !section.text ? 'data-content="description"' : `data-section-field="text" data-section-id="${section.id}"`;
+    return `<label class="field-label"><span>Título</span><textarea rows="2" maxlength="180" ${title} placeholder="Título del ejemplo">${esc(section.title || (usesPage ? currentContent().title : ''))}</textarea></label><label class="field-label"><span>${section.type === 'hero' ? 'Descripción' : 'Texto'}</span><textarea rows="4" maxlength="${description.includes('data-content') ? 600 : 1000}" ${description} placeholder="Texto del ejemplo">${esc(section.text || (usesPage ? currentContent().description : ''))}</textarea></label>`;
+  }
+  function renderSectionEditor(s) {
+    const isCover = s.type === 'hero';
+    const settings = componentSettings(s.type);
+    const goals = [['','Del ejemplo'],['products','Ver productos'],['services','Ver servicios'],['contact','Contactar']];
+    const coverButton = isCover ? disclosure('cover-button', 'Botón principal', `
+      ${state.activePage === 'inicio' ? selectField('Acción de la portada de Inicio', 'homeGoal', goals, state.settings.homeGoal) : ''}
+      <p class="editor-note">El estilo y el tamaño de los botones se aplican en toda la web.</p>${componentSettings('buttons')}${variants(family('buttons'))}`) : '';
+    return `${s.hidden ? '<p class="editor-note">Esta sección está oculta.</p>' : ''}${sectionText(s)}
+      ${coverButton}${globalDesign(s.type)}
+      ${s.type === 'catalog' ? globalDesign('cards', 'Diseño de las tarjetas') : ''}
+      ${settings ? disclosure('section-settings', 'Ajustes de diseño', siteScope() + settings) : ''}
+      ${disclosure('section-options', 'Opciones de sección', `<div class="editor-section-options">
+        <button class="ui-btn" data-action="toggle-section" data-value="${s.id}">${icon(s.hidden ? 'eye' : 'hidden', 15)} ${s.hidden ? 'Mostrar' : 'Ocultar'} sección</button>
+        <button class="ui-btn" data-action="duplicate-section" data-value="${s.id}">${icon('copy', 15)} Duplicar sección</button>
+        <button class="ui-btn danger-text" data-action="remove-section" data-value="${s.id}">${icon('trash', 15)} Eliminar sección</button>
+      </div>`)}`;
   }
   function renderComposition() {
-    const pc = currentContent();
-    $('#inspector-content').innerHTML = `${panelHeader('02 / COMPOSICIÓN', 'Una página a tu medida.', 'Ordena las secciones y adapta sus textos. Tú decides qué cuenta cada página.')}<div class="scope-note page-scope">${icon('pages', 13)}Solo esta página · ${esc(currentPage().name)}</div><div class="panel-body"><div class="setting-group"><div class="setting-group-title">PORTADA DE LA PÁGINA</div><label class="field-label"><span>Título</span><textarea rows="3" maxlength="180" data-content="title">${esc(pc.title)}</textarea></label><label class="field-label"><span>Descripción</span><textarea rows="4" maxlength="600" data-content="description">${esc(pc.description)}</textarea></label></div><div class="section-list-title"><span>SECCIONES</span><span>${pc.sections.length}</span></div><div class="section-list">${pc.sections.map((s, i) => { const c = CATEGORIES.find(c => c.id === s.type); return `<div class="section-item ${s.hidden ? 'is-hidden' : ''}" data-section="${s.id}"><div class="section-row"><span class="section-symbol">${icon(c?.icon, 17)}</span><button class="section-name" data-action="edit-section" data-value="${s.id}"><strong>${esc(s.title || c?.name || s.type)}</strong><span>${s.hidden ? 'Oculta' : c?.variants[state.components[s.type]] || 'Sección'}</span></button><div class="section-actions">${iconBtn('move-section-up', 'up', 'Subir sección', `data-value="${s.id}" ${i === 0 ? 'disabled' : ''}`)}${iconBtn('move-section-down', 'down', 'Bajar sección', `data-value="${s.id}" ${i === pc.sections.length - 1 ? 'disabled' : ''}`)}${iconBtn('toggle-section', s.hidden ? 'hidden' : 'eye', s.hidden ? 'Mostrar sección' : 'Ocultar sección', `data-value="${s.id}"`)}</div></div>${ui.selectedSection === s.id ? `<div class="section-editor"><label class="field-label"><span>Título de la sección</span><input data-section-field="title" data-section-id="${s.id}" value="${esc(s.title || '')}" placeholder="Usar el título del ejemplo" maxlength="180"></label><label class="field-label"><span>Texto de la sección</span><textarea data-section-field="text" data-section-id="${s.id}" rows="3" maxlength="1000" placeholder="Usar el texto del ejemplo">${esc(s.text || '')}</textarea></label><div class="section-edit-actions"><button class="quiet-link" data-action="category" data-value="${s.type}">${icon('layout', 13)}Cambiar diseño</button><div>${iconBtn('duplicate-section', 'copy', 'Duplicar sección', `data-value="${s.id}"`)}${iconBtn('remove-section', 'trash', 'Eliminar sección', `data-value="${s.id}"`)}</div></div></div>` : ''}</div>`; }).join('')}</div><button class="dashed-btn" data-action="add-section">${icon('plus', 16)}Añadir sección</button><div class="small-tip">${icon('layers', 16)}Los textos y el orden pertenecen a esta página. El diseño de los componentes es global.</div></div>`;
+    const sections = currentContent().sections;
+    return `<div class="section-list">${sections.map((s, i) => `<div class="section-item ${s.hidden ? 'is-hidden' : ''}"><div class="section-row"><span class="section-symbol">${icon(family(s.type).icon, 17)}</span><button class="section-name" data-action="edit-section" data-value="${s.id}"><strong>${esc(s.title || sectionName(s.type))}</strong><span>${s.hidden ? 'Oculta' : family(s.type).variants[state.components[s.type]]}</span></button><div class="section-actions">${iconBtn('move-section-up', 'up', 'Subir sección', `data-value="${s.id}" ${i === 0 ? 'disabled' : ''}`)}${iconBtn('move-section-down', 'down', 'Bajar sección', `data-value="${s.id}" ${i === sections.length - 1 ? 'disabled' : ''}`)}${iconBtn('toggle-section', s.hidden ? 'hidden' : 'eye', s.hidden ? 'Mostrar sección' : 'Ocultar sección', `data-value="${s.id}"`)}</div></div></div>`).join('') || '<p class="editor-note">Esta página todavía no tiene secciones.</p>'}</div>
+      <button class="dashed-btn" data-action="add-section">${icon('plus', 16)} Añadir sección</button>
+      ${disclosure('page-content', 'Título y descripción de la página', pageText())}`;
+  }
+  function renderSectionPicker() {
+    const { group, id } = currentPage();
+    const suggested = id === 'contacto' ? ['forms','faq','info','cta']
+      : group === 'Servicios' ? ['features','gallery','testimonials','forms']
+      : ['Plantas','Productos'].includes(group) ? ['catalog','info','faq','cta']
+      : ['catalog','features','gallery','info'];
+    const existing = currentContent().sections.filter(s => !s.hidden).map(s => s.type);
+    const recommended = [...new Set([...suggested, 'faq', 'forms', 'cta', 'testimonials', ...SECTION_TYPES.map(c => c.id)])]
+      .sort((a,b) => Number(existing.includes(a)) - Number(existing.includes(b))).slice(0,4);
+    const row = type => `<button class="editor-row" data-action="insert-section" data-value="${type}">${icon(family(type).icon, 17)}<span><strong>${sectionName(type)}</strong><small>${family(type).desc}</small></span>${icon('plus', 15)}</button>`;
+    const after = currentContent().sections.find(s => s.id === ui.insertAfter);
+    return `<p class="editor-note">${after ? `Se insertará después de ${esc(sectionName(after.type).toLowerCase())}.` : 'Se añadirá al final de la página.'}</p><h3 class="editor-group-title">Sugerencias para ${esc(currentPage().name)}</h3><div class="editor-library">${recommended.map(row).join('')}</div>
+      ${disclosure('all-sections', 'Ver todas las secciones', `<div class="editor-library">${SECTION_TYPES.map(c => row(c.id)).join('')}</div>`)}`;
   }
   const rangeField = (label, key, min, max, step, unit) => `<label class="range-field"><span>${label}<output id="out-${key}">${state.settings[key]}${unit}</output></span><input type="range" data-setting="${key}" data-unit="${unit}" min="${min}" max="${max}" step="${step}" value="${state.settings[key]}"><small><span>${min}${unit}</span><span>${max}${unit}</span></small></label>`;
   function weightField(label, key, weights) {
@@ -965,18 +1102,38 @@
     const options = [0, ...weights].map(weight => `<button type="button" class="ui-btn" data-action="type-weight" data-value="${key}:${weight}" aria-pressed="${value === weight}">${weight || 'Original'}</button>`).join('');
     return `<div class="type-weights" role="group" aria-label="${label}"><strong>${label}</strong><div>${options}</div></div>`;
   }
-  function renderIdentity() {
-    const titles = { presets: ['Encuentra tu esencia.', 'Seis puntos de partida. Después, cada detalle puede ser tuyo.'], brand: ['Tu centro, tu historia.', 'La información que hace que esta web sea la tuya.'], colors: ['Una paleta con vida.', 'Cuatro colores que conectan toda la experiencia.'], type: ['Palabras con carácter.', 'Combina fuentes para dar voz a tu marca.'], layout: ['El detalle lo cambia todo.', 'Ajusta el ritmo, las formas y el aire de tu web.'], footer: ['Una buena despedida.', 'Elige qué información estará siempre al final.'] };
+  function identityContent(mode) {
     let content = '';
-    if (ui.identity === 'presets') content = `<div class="preset-list">${PRESETS.map((p, i) => `<button class="preset-card ${state.settings.primary === p.colors[0] ? 'active' : ''}" data-action="preset" data-value="${i}"><div class="preset-art" style="background:${p.colors[2]};color:${p.colors[0]}"><span class="preset-a" style="font-family:${p.headingFont === 'sans' ? 'DM Sans,sans-serif' : 'DM Serif Display,Georgia,serif'}">Aa<span>.</span></span><div class="preset-swatches">${p.colors.map(color => `<i style="background:${color}"></i>`).join('')}</div>${state.settings.primary === p.colors[0] ? `<span class="preset-check">${icon('check', 13)}</span>` : ''}</div><div class="preset-caption"><strong>${p.name}</strong><span>${p.caption}</span></div></button>`).join('')}</div><div class="small-tip">${icon('spark', 17)}El estilo cambia colores, fuente de títulos y radios. Tus páginas y composiciones se conservan.</div>`;
-    if (ui.identity === 'brand') content = `<div class="setting-group"><div class="brand-preview"><span>${icon('sprout', 38)}</span><strong>${esc(state.settings.brand)}</strong><small>${esc(state.settings.tagline)}</small></div>${[['brand', 'Nombre del centro', 60], ['tagline', 'Una frase que os defina', 250], ['location', 'Ciudad', 80], ['email', 'Correo electrónico', 150], ['phone', 'Teléfono', 40], ['address', 'Dirección', 250], ['hours', 'Horario', 160]].map(([k, label, max]) => `<label class="field-label"><span>${label}</span><input data-setting="${k}" value="${esc(state.settings[k])}" maxlength="${max}"></label>`).join('')}${toggle('Símbolo botánico junto al nombre', 'logoMark', state.settings.logoMark)}</div>`;
-    if (ui.identity === 'colors') content = `<div class="setting-group">${[['primary', 'Principal', 'Acciones, cabeceras y acentos.'], ['accent', 'Secundario', 'Detalles y superficies suaves.'], ['background', 'Fondo', 'El lienzo de tu sitio.'], ['text', 'Texto', 'Para leer con comodidad.']].map(([k, label, desc]) => `<div class="color-setting"><div><strong>${label}</strong><small>${desc}</small></div><label class="color-input" style="--swatch:${state.settings[k]}"><input type="color" data-setting="${k}" value="${state.settings[k]}" aria-label="Color ${label}"><span></span></label><input class="hex-input" data-color-text="${k}" value="${state.settings[k].toUpperCase()}" maxlength="7" aria-label="Código hexadecimal ${label}"></div>`).join('')}</div><div class="color-specimen" style="background:${state.settings.background};color:${state.settings.text}"><span class="specimen-pill" style="background:${state.settings.accent};color:${state.settings.primary}">TU PALETA EN ACCIÓN</span><h3>Un poco más<br>de naturaleza.</h3><p>Cuatro colores. Infinitas posibilidades.</p><button type="button" style="background:${state.settings.primary};color:${readableOn(state.settings.primary)}" data-action="sample-toast">Descubrir ${icon('arrow', 15)}</button></div><div id="contrast-note">${contrastMarkup()}</div><button class="ui-btn full-width" data-action="identity" data-value="presets">${icon('palette', 16)}Ver paletas de partida</button>`;
-    if (ui.identity === 'type') content = `<div class="setting-group">${selectField('Fuente para los títulos', 'headingFont', [['serif', 'DM Serif Display · Botánica'], ['sans', 'DM Sans · Moderna'], ['modern', 'Georgia · Editorial'], ['humanist', 'Palatino · Artesanal']], state.settings.headingFont)}<div class="type-specimen" style="font-family:${({ serif: 'DM Serif Display,Georgia,serif', sans: 'DM Sans,sans-serif', modern: 'Georgia,serif', humanist: 'Palatino,serif' })[state.settings.headingFont]}"><span>Aa Bb Cc</span><strong style="${state.settings.headingWeight ? `font-weight:${state.settings.headingWeight}` : ''}">Deja que<br>la vida crezca.</strong><small style="${state.settings.bodyWeight ? `font-weight:${state.settings.bodyWeight}` : ''}">ABCDEFGHIJKLMNOPQRSTUVWXYZ<br>abcdefghijklmnopqrstuvwxyz · 0123456789</small></div>${selectField('Fuente para los textos', 'bodyFont', [['sans', 'DM Sans · Clara y cercana'], ['humanist', 'Trebuchet MS · Humanista'], ['mono', 'Monospace · Técnica'], ['serif', 'Georgia · Clásica']], state.settings.bodyFont)}${rangeField('Tamaño del texto base', 'fontSize', 14, 20, 1, ' px')}
+    if (mode === 'presets') content = `<div class="preset-list">${PRESETS.map((p, i) => `<button class="preset-card ${state.settings.primary === p.colors[0] ? 'active' : ''}" data-action="preset" data-value="${i}"><div class="preset-art" style="background:${p.colors[2]};color:${p.colors[0]}"><span class="preset-a" style="font-family:${p.headingFont === 'sans' ? 'DM Sans,sans-serif' : 'DM Serif Display,Georgia,serif'}">Aa<span>.</span></span><div class="preset-swatches">${p.colors.map(color => `<i style="background:${color}"></i>`).join('')}</div>${state.settings.primary === p.colors[0] ? `<span class="preset-check">${icon('check', 13)}</span>` : ''}</div><div class="preset-caption"><strong>${p.name}</strong><span>${p.caption}</span></div></button>`).join('')}</div><div class="small-tip">${icon('spark', 17)}El estilo cambia colores, fuente de títulos y radios. Tus páginas y composiciones se conservan.</div>`;
+    if (mode === 'brand') content = `<div class="setting-group"><div class="brand-preview"><span>${icon('sprout', 38)}</span><strong>${esc(state.settings.brand)}</strong><small>${esc(state.settings.tagline)}</small></div>${[['brand', 'Nombre del centro', 60], ['tagline', 'Una frase que os defina', 250], ['location', 'Ciudad', 80], ['email', 'Correo electrónico', 150], ['phone', 'Teléfono', 40], ['address', 'Dirección', 250], ['hours', 'Horario', 160]].map(([k, label, max]) => `<label class="field-label"><span>${label}</span><input data-setting="${k}" value="${esc(state.settings[k])}" maxlength="${max}"></label>`).join('')}${toggle('Símbolo botánico junto al nombre', 'logoMark', state.settings.logoMark)}</div>`;
+    if (mode === 'colors') content = `<div class="setting-group">${[['primary', 'Principal', 'Acciones, cabeceras y acentos.'], ['accent', 'Secundario', 'Detalles y superficies suaves.'], ['background', 'Fondo', 'El lienzo de tu sitio.'], ['text', 'Texto', 'Para leer con comodidad.']].map(([k, label, desc]) => `<div class="color-setting"><div><strong>${label}</strong><small>${desc}</small></div><label class="color-input" style="--swatch:${state.settings[k]}"><input type="color" data-setting="${k}" value="${state.settings[k]}" aria-label="Color ${label}"><span></span></label><input class="hex-input" data-color-text="${k}" value="${state.settings[k].toUpperCase()}" maxlength="7" aria-label="Código hexadecimal ${label}"></div>`).join('')}</div><div class="color-specimen" style="background:${state.settings.background};color:${state.settings.text}"><span class="specimen-pill" style="background:${state.settings.accent};color:${state.settings.primary}">TU PALETA EN ACCIÓN</span><h3>Un poco más<br>de naturaleza.</h3><p>Cuatro colores. Infinitas posibilidades.</p><button type="button" style="background:${state.settings.primary};color:${readableOn(state.settings.primary)}" data-action="sample-toast">Descubrir ${icon('arrow', 15)}</button></div><div id="contrast-note">${contrastMarkup()}</div>`;
+    if (mode === 'type') content = `<div class="setting-group">${selectField('Fuente para los títulos', 'headingFont', [['serif', 'DM Serif Display · Botánica'], ['sans', 'DM Sans · Moderna'], ['modern', 'Georgia · Editorial'], ['humanist', 'Palatino · Artesanal']], state.settings.headingFont)}<div class="type-specimen" style="font-family:${({ serif: 'DM Serif Display,Georgia,serif', sans: 'DM Sans,sans-serif', modern: 'Georgia,serif', humanist: 'Palatino,serif' })[state.settings.headingFont]}"><span>Aa Bb Cc</span><strong style="${state.settings.headingWeight ? `font-weight:${state.settings.headingWeight}` : ''}">Deja que<br>la vida crezca.</strong><small style="${state.settings.bodyWeight ? `font-weight:${state.settings.bodyWeight}` : ''}">ABCDEFGHIJKLMNOPQRSTUVWXYZ<br>abcdefghijklmnopqrstuvwxyz · 0123456789</small></div>${selectField('Fuente para los textos', 'bodyFont', [['sans', 'DM Sans · Clara y cercana'], ['humanist', 'Trebuchet MS · Humanista'], ['mono', 'Monospace · Técnica'], ['serif', 'Georgia · Clásica']], state.settings.bodyFont)}${rangeField('Tamaño del texto base', 'fontSize', 14, 20, 1, ' px')}
       ${weightField('Peso de los títulos', 'headingWeight', [400,500,600,700,800])}
       ${weightField('Peso de los párrafos', 'bodyWeight', [400,500,600])}</div><div class="small-tip">${icon('type', 17)}Las fuentes principales van incluidas en el proyecto: no necesitan servicios externos.</div>`;
-    if (ui.identity === 'layout') content = `<div class="setting-group">${rangeField('Redondeado de las esquinas', 'radius', 0, 32, 1, ' px')}<div class="radius-demo" style="--demo-radius:${state.settings.radius}px"><div></div><div></div><button type="button" data-action="sample-toast">Botón</button></div>${rangeField('Espacio entre secciones', 'spacing', 32, 120, 4, ' px')}${rangeField('Ancho máximo del contenido', 'maxWidth', 960, 1440, 40, ' px')}${selectField('Sombras de las tarjetas', 'shadow', [['none', 'Sin sombra'], ['soft', 'Sutil'], ['lifted', 'Con profundidad']], state.settings.shadow)}${selectField('Columnas del catálogo', 'columns', [[2, '2 columnas'], [3, '3 columnas'], [4, '4 columnas']], state.settings.columns)}${toggle('Transiciones suaves', 'animations', state.settings.animations)}</div><div class="small-tip">${icon('mobile', 17)}La cuadrícula se adapta automáticamente a móvil. Estos ajustes definen la composición en escritorio.</div>`;
-    if (ui.identity === 'footer') content = footerControls() + `<button class="ui-btn full-width" data-action="category" data-value="footer">${icon('footer', 16)}Elegir diseño del pie</button>`;
-    $('#inspector-content').innerHTML = `${panelHeader('03 / IDENTIDAD', titles[ui.identity][0], titles[ui.identity][1])}<div class="scope-note">${icon('globe', 13)}Una misma identidad en toda tu web</div><div class="panel-body identity-body">${content}</div>`;
+    if (mode === 'layout') content = `<div class="setting-group">${rangeField('Redondeado de las esquinas', 'radius', 0, 32, 1, ' px')}<div class="radius-demo" style="--demo-radius:${state.settings.radius}px"><div></div><div></div><button type="button" data-action="sample-toast">Botón</button></div>${rangeField('Espacio entre secciones', 'spacing', 32, 120, 4, ' px')}${rangeField('Ancho máximo del contenido', 'maxWidth', 960, 1440, 40, ' px')}${selectField('Sombras de las tarjetas', 'shadow', [['none', 'Sin sombra'], ['soft', 'Sutil'], ['lifted', 'Con profundidad']], state.settings.shadow)}${selectField('Columnas del catálogo', 'columns', [[2, '2 columnas'], [3, '3 columnas'], [4, '4 columnas']], state.settings.columns)}${toggle('Transiciones suaves', 'animations', state.settings.animations)}</div><div class="small-tip">${icon('mobile', 17)}La cuadrícula se adapta automáticamente a móvil. Estos ajustes definen la composición en escritorio.</div>`;
+    if (mode === 'footer') content = footerControls();
+    return content;
+  }
+  function renderIdentity() {
+    const library = `<label class="search-field">${icon('search', 16)}<input id="component-search" value="${esc(ui.componentSearch)}" placeholder="Buscar entre ${TOTAL_VARIANTS} diseños" aria-label="Buscar componente"></label><div id="editor-family-list">${familyChoices()}</div>`;
+    return `<h3 class="editor-group-title">Paletas de partida</h3>${identityContent('presets')}
+      ${disclosure('colors', 'Colores personalizados', identityContent('colors'))}
+      ${disclosure('brand', 'Datos de tu centro', identityContent('brand'))}
+      ${disclosure('advanced', 'Ajustes avanzados', [
+        disclosure('type', 'Tipografía', identityContent('type')),
+        disclosure('layout', 'Formas y espacios', identityContent('layout')),
+        disclosure('footer', 'Contenido del pie de página', identityContent('footer')),
+        disclosure('library', 'Biblioteca de componentes', library)
+      ].join(''))}`;
+  }
+  function familyChoices() {
+    const search = ui.componentSearch.trim().toLocaleLowerCase('es');
+    const matching = CATEGORIES.filter(c => c.name.toLocaleLowerCase('es').includes(search));
+    return ['Estructura','Elementos','Secciones'].map(group => {
+      const rows = matching.filter(c => c.group === group);
+      if (!rows.length) return '';
+      return `<h3 class="editor-group-title">${group}</h3>${rows.map(c => `<button class="editor-row" data-action="category" data-value="${c.id}">${icon(c.icon, 16)}<strong>${c.name}</strong>${icon('chevron', 14)}</button>`).join('')}`;
+    }).join('') || '<p class="editor-note">No se han encontrado componentes.</p>';
   }
   function luminance(hex) { const c = hex.slice(1).match(/../g).map(x => parseInt(x, 16) / 255).map(v => v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4); return c[0] * .2126 + c[1] * .7152 + c[2] * .0722; }
   function readableOn(hex) { return luminance(hex) > .42 ? '#172c22' : '#ffffff'; }
@@ -1015,13 +1172,23 @@
     if (!window.BroteSite) return;
     const frame = $('#site-frame'); if (!frame) return;
     const section = focusType || lastFocusType;
-    const isSample = ui.canvasMode === 'component' && ui.stage === 'design' && ui.category !== 'composition';
-    let previousScroll = 0; try { previousScroll = frame.contentWindow.scrollY; } catch {}
+    const isSample = ui.canvasMode === 'component' && ui.stage === 'design';
+    const frameKey = isSample ? `sample:${ui.category}` : state.activePage;
+    let previousScroll = 0;
+    if (frame.dataset.view === frameKey) {
+      previousScroll = Number(frame.dataset.scroll) || 0;
+      try { previousScroll = frame.contentWindow.scrollY; } catch {}
+    }
+    frame.dataset.view = frameKey;
+    frame.dataset.scroll = previousScroll;
     const body = isSample ? window.BroteSite.sample(ui.category, state.components[ui.category], state, catalog()) : window.BroteSite.render(state, catalog(), { clean: false });
-    frame.srcdoc = documentHTML(body, { scrollTo: !isSample && section ? section : null });
-    if (!section && !isSample && previousScroll) frame.addEventListener('load', () => { try { frame.contentWindow.scrollTo(0, previousScroll); } catch {} }, { once: true });
+    frame.onload = () => {
+      if (!section && !isSample) {
+        frame.contentWindow.postMessage({source:'brote-studio', type:'set-scroll', top:previousScroll}, '*');
+      }
+    };
+    frame.srcdoc = documentHTML(body, { scrollTo: !isSample && section ? section : null, sample:isSample });
     const addr = $('#browser-address'); if (addr) addr.textContent = isSample ? `Componente / ${CATEGORIES.find(c => c.id === ui.category)?.name}` : `${slug(state.settings.brand)}.demo/${state.activePage === 'inicio' ? '' : currentPage().id}`;
-    const hint = $('#canvas-hint'); if (hint) hint.innerHTML = isSample ? `${icon('layers', 14)} Vista aislada · ${esc(CATEGORIES.find(c => c.id === ui.category)?.name)}` : `${icon('spark', 14)} Pasa sobre una sección para editarla.`;
     fitPreview();
     lastFocusType = null;
   }
@@ -1029,8 +1196,8 @@
   function fitPreview() {
     const stage = $('#canvas-stage'), box = $('#browser-frame'), viewport = $('#frame-viewport'), frame = $('#site-frame'); if (!stage || !frame) return;
     const width = ui.device === 'mobile' ? 390 : ui.device === 'tablet' ? 768 : 1200;
-    const availW = Math.max(240, stage.clientWidth - (window.innerWidth <= 700 ? 20 : 42));
-    const availH = Math.max(220, stage.clientHeight - 28);
+    const availW = Math.max(240, stage.clientWidth - (window.innerWidth <= 700 ? 16 : 40));
+    const availH = Math.max(130, stage.clientHeight - 10);
     const borderWidth = ui.device === 'mobile' ? 10 : 2;
     const scale = ui.actualSize ? 1 : Math.min(1, (availW - borderWidth) / width);
     stage.classList.toggle('actual-size', ui.actualSize);
@@ -1041,20 +1208,33 @@
     sizeButton.textContent = `${Math.round(scale * 100)}%`;
     sizeButton.title = ui.actualSize ? 'Ajustar al lienzo' : 'Ver a tamaño real';
     sizeButton.setAttribute('aria-pressed', String(ui.actualSize));
-    $$('[data-sample]').forEach(el => { const f = $('iframe', el); const sw = ui.sampleDevice === 'mobile' ? 390 : 780; const factor = ui.sampleDevice === 'mobile' ? .47 : el.clientWidth / sw; f.style.width = `${sw}px`; f.style.transform = `scale(${factor})`; f.style.height = `${el.clientHeight / factor}px`; });
+    $$('[data-sample]').filter(el => el.clientWidth).forEach(el => { const f = $('iframe', el); const sw = ui.sampleDevice === 'mobile' ? 390 : 780; const factor = ui.sampleDevice === 'mobile' ? .47 : el.clientWidth / sw; f.style.width = `${sw}px`; f.style.transform = `scale(${factor})`; f.style.height = `${el.clientHeight / factor}px`; });
   }
-  function hydrateSamples() {
+  function hydrateSamples(refresh = false) {
     if (!window.BroteSite) return;
-    $$('[data-sample]').forEach(el => { const type = el.dataset.sample, v = Number(el.dataset.index); const f = $('iframe', el); f.srcdoc = documentHTML(window.BroteSite.sample(type, v, state, catalog()), { sample: true, clean: true }); });
+    $$('[data-sample]').filter(el => el.clientWidth).forEach(el => { const type = el.dataset.sample, v = Number(el.dataset.index); const f = $('iframe', el); if (!refresh && f.hasAttribute('srcdoc')) return; f.srcdoc = documentHTML(window.BroteSite.sample(type, v, state, catalog()), { sample: true, clean: true }); });
     requestAnimationFrame(fitPreview);
   }
-  function selectCategory(type) {
-    finishEdit(); ui.stage = 'design'; ui.category = type; ui.selectedSection = null;
-    const inPage = componentVisible(type);
-    ui.canvasMode = inPage ? 'page' : 'component'; lastFocusType = ['cards', 'buttons'].includes(type) ? type === 'cards' ? 'catalog' : 'hero' : type;
+  function openSection(id, back = null, scroll = false) {
+    const section = currentContent().sections.find(s => s.id === id);
+    if (!section) return;
+    showPanel('section', {selectedSection:id, panelBack:back});
+    if (scroll && !section.hidden) {
+      $('#site-frame').contentWindow.postMessage({source:'brote-studio', type:'focus', sectionId:id}, '*');
+    }
+  }
+  function openComponent(type, back = null) {
+    showPanel('design', {category:type, panelBack:back, canvasMode:componentVisible(type) ? 'page' : 'component'});
+  }
+  function selectPage(id) {
+    if (!state.pages.includes(id) || id === state.activePage) return;
+    finishEdit();
+    state.activePage = id;
+    Object.assign(ui, { canvasMode:'page', selectedSection:null, insertAfter:null, panelBack:null });
+    if (!['pages','brand','order'].includes(ui.stage)) ui.stage = 'preview';
+    persist();
     render();
   }
-  function selectPage(id) { if (!state.pages.includes(id)) return; finishEdit(); state.activePage = id; ui.canvasMode = 'page'; ui.selectedSection = null; persist(); render(); }
   function showModal(title, body, className = '') {
     const d = $('#modal'); d.className = `app-modal ${className}`; d.innerHTML = `<div class="modal-heading"><div><span class="eyebrow">BROTE STUDIO</span><h2 id="modal-title">${title}</h2></div>${iconBtn('close-modal', 'close', 'Cerrar ventana')}</div><div class="modal-body">${body}</div>`; if (!d.open) d.showModal();
   }
@@ -1062,43 +1242,94 @@
     finishEdit(); const d = $('#site-modal'); d.innerHTML = `<div class="preview-modal-bar"><div class="preview-modal-brand">${icon('sprout', 21)}<strong>${esc(state.settings.brand)}</strong><span>Vista previa</span></div><select id="fullscreen-page" aria-label="Página de la vista previa ampliada">${pageOptions()}</select><button class="ui-btn" data-action="close-preview">${icon('close', 16)}Volver al estudio</button></div><iframe id="fullscreen-frame" title="Vista ampliada del sitio" sandbox="allow-scripts allow-same-origin allow-forms"></iframe>`; $('#fullscreen-frame').srcdoc = documentHTML(window.BroteSite.render(state, catalog(), { clean: true }), { clean: true }); d.showModal();
   }
   function downloadJSON() { finishEdit(); const blob = new Blob([JSON.stringify({ ...state, exportedAt: new Date().toISOString() }, null, 2)], { type: 'application/json' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `brote-${slug(state.settings.brand)}.json`; a.click(); guide.complete('export'); setTimeout(() => URL.revokeObjectURL(a.href), 1000); toast('Configuración exportada. Puedes importarla en cualquier navegador.'); }
-  function help() { showModal('Una web que se siente tuya.', `<p class="modal-lead">Brote es una maqueta funcional de un constructor especializado en centros de jardinería.</p><div class="help-steps">${[['01', 'Elige las páginas', 'Selecciona tu estructura. Cada página recibe contenido y secciones de ejemplo adaptadas a su función.'], ['02', 'Combina componentes', `Explora ${TOTAL_VARIANTS} composiciones. Cambia menús, tarjetas, formularios y secciones, y pruébalos también en móvil.`], ['03', 'Hazla tuya', 'Elige una paleta, cambia las fuentes y ajusta las formas. Luego edita los textos y el orden de cada página.']].map(([n, h, p]) => `<div><span>${n}</span><section><h3>${h}</h3><p>${p}</p></section></div>`).join('')}</div><div class="modal-note">${icon('lock', 20)}<p><strong>Tu proyecto se guarda en este navegador.</strong><br>Exporta el JSON para conservarlo o llevarlo a otro equipo. Los formularios son de demostración y no envían datos. La conexión con WordPress será una fase posterior.</p></div><button class="ui-btn primary full-width" data-action="close-modal">Vamos a crear ${icon('arrow', 16)}</button>`); }
-
   document.addEventListener('click', event => {
-    const b = event.target.closest('[data-action]'); if (!b) return;
+    const b = event.target.closest('[data-action]');
+    const more = $('.editor-more');
+    if (more && (b || !more.contains(event.target))) more.open = false;
+    if (!b) return;
     event.preventDefault(); const action = b.dataset.action, value = b.dataset.value;
-    const beforeSections = ['move-section-up','move-section-down','toggle-section','remove-section','duplicate-section','add-current-component','insert-section'].includes(action)
+    const beforeSections = ['move-section-up','move-section-down','toggle-section','remove-section','duplicate-section','insert-section'].includes(action)
       ? JSON.stringify(currentContent().sections) : null;
-    if (action === 'stage') { finishEdit(); ui.stage = value; ui.canvasMode = 'page'; render(); }
-    else if (action === 'home') { ui.stage = 'pages'; render(); }
-    else if (action === 'page-group') { ui.pageGroup = value; renderRail(); renderPanel(); }
-    else if (action === 'select-group') change(() => { catalog().filter(p => (ui.pageGroup === 'Todas' || p.group === ui.pageGroup) && (p.name + ' ' + p.description).toLowerCase().includes(ui.pageSearch.toLowerCase())).forEach(p => { if (!state.pages.includes(p.id)) state.pages.push(p.id); }); });
-    else if (action === 'generate') { change(() => { state.generated = true; ui.stage = 'design'; ui.category = 'navbar'; ui.canvasMode = 'page'; }); guide.complete('pages'); toast(`${state.pages.length} páginas creadas. Ahora vamos a darles personalidad.`); }
-    else if (action === 'category') selectCategory(value);
-    else if (action === 'identity') { finishEdit(); ui.stage = 'brand'; ui.identity = value; ui.canvasMode = 'page'; if (value === 'footer') lastFocusType = 'footer'; render(); }
-    else if (action === 'variant') { const type = ui.category; change(() => { state.components[type] = Number(value); }, 'panel'); guide.complete('design'); toast(`${CATEGORIES.find(c => c.id === type).variants[Number(value)]} aplicado a todo el sitio.`); }
-    else if (action === 'device') { if (value === 'mobile') guide.complete('mobile'); ui.device = value; $$('.device-picker button').forEach(e => { e.classList.toggle('active', e.dataset.value === value); e.setAttribute('aria-pressed', String(e.dataset.value === value)); }); fitPreview(); }
+    if (action === 'stage') {
+      if (ui.stage === value) showPanel('preview');
+      else showPanel(value);
+    }
+    else if (action === 'home' || action === 'close-panel') {
+      const currentStage = ui.stage;
+      showPanel('preview');
+      ($(`.editor-nav[data-value="${currentStage}"]`) || $('[data-action="edit-cover"]:not([hidden])') || $('#preview-page')).focus();
+    }
+    else if (action === 'panel-back') {
+      const back = ui.panelBack;
+      showPanel(back.stage);
+      $$('[data-disclosure]').forEach(el => { el.open = back.disclosures?.includes(el.dataset.disclosure) || false; });
+      $('.panel-body').scrollTop = back.scroll;
+    }
+    else if (action === 'choose-page') {
+      selectPage(value);
+      $(`[data-action="choose-page"][data-value="${value}"]`)?.focus();
+    }
+    else if (action === 'select-group') change(() => {
+      filteredPages().forEach(p => { if (!state.pages.includes(p.id)) state.pages.push(p.id); });
+    });
+    else if (action === 'generate') {
+      change(() => { state.generated = true; ui.stage = 'preview'; ui.canvasMode = 'page'; });
+      guide.complete('pages');
+      toast(`${state.pages.length} páginas listas para editar.`);
+    }
+    else if (action === 'category') openComponent(value, {
+      stage:'brand', scroll:$('.panel-body').scrollTop, disclosures:$$('[data-disclosure][open]').map(el => el.dataset.disclosure)
+    });
+    else if (action === 'variant') {
+      const c = family(b.dataset.family);
+      change(() => { state.components[c.id] = Number(value); }, 'panel');
+      guide.complete('design');
+      toast(`${c.variants[Number(value)]} aplicado a todo el sitio.`);
+    }
+    else if (action === 'device') { if (value === 'mobile') guide.complete('mobile'); ui.device = value; syncPreviewControls(); }
     else if (action === 'actual-size') { ui.actualSize = !ui.actualSize; fitPreview(); }
     else if (action === 'type-weight') {
       const [key, weight] = value.split(':');
       change(() => { state.settings[key] = Number(weight); }, 'panel');
       guide.complete('identity');
     }
-    else if (action === 'sample-device') { ui.sampleDevice = value; renderPanel(); }
+    else if (action === 'sample-device') {
+      const panelScroll = $('.panel-body').scrollTop;
+      const toolbarIndex = $$('.variant-toolbar').indexOf(b.closest('.variant-toolbar'));
+      ui.sampleDevice = value;
+      renderPanel();
+      $('.panel-body').scrollTop = panelScroll;
+      $$('.variant-toolbar')[toolbarIndex]?.querySelector(`[data-value="${value}"]`)?.focus({preventScroll:true});
+    }
     else if (action === 'canvas-mode') { ui.canvasMode = ui.canvasMode === 'page' ? 'component' : 'page'; renderPanel(); renderPreview(); }
-    else if (action === 'composition') { finishEdit(); ui.stage = 'design'; ui.category = 'composition'; ui.canvasMode = 'page'; render(); }
-    else if (action === 'edit-section') { ui.selectedSection = ui.selectedSection === value ? null : value; renderComposition(); const section = currentContent().sections.find(s => s.id === value); renderPreview(section ? { id: section.id, type: section.type } : null); }
+    else if (action === 'composition') showPanel('order');
+    else if (action === 'edit-cover') openSection(firstCover()?.id, null, true);
+    else if (action === 'edit-section') openSection(value, {stage:'order', scroll:$('.panel-body').scrollTop}, true);
     else if (action === 'move-section-up' || action === 'move-section-down') change(() => { const sections = currentContent().sections; const i = sections.findIndex(s => s.id === value), j = i + (action === 'move-section-up' ? -1 : 1); if (i >= 0 && j >= 0 && j < sections.length) [sections[i], sections[j]] = [sections[j], sections[i]]; }, 'panel');
     else if (action === 'toggle-section') change(() => { const s = currentContent().sections.find(s => s.id === value); if (s) s.hidden = !s.hidden; }, 'panel');
-    else if (action === 'remove-section') { change(() => { currentContent().sections = currentContent().sections.filter(s => s.id !== value); }, 'panel'); toast('Sección eliminada. Puedes deshacer este cambio.'); }
+    else if (action === 'remove-section') { change(() => { currentContent().sections = currentContent().sections.filter(s => s.id !== value); ui.stage = 'order'; ui.panelBack = null; ui.selectedSection = null; }, 'panel'); toast('Sección eliminada. Puedes deshacer este cambio.'); }
     else if (action === 'duplicate-section') change(() => { const a = currentContent().sections, i = a.findIndex(s => s.id === value); if (i >= 0 && a.length < 30) a.splice(i + 1, 0, { ...a[i], id: uid() }); }, 'panel');
-    else if (action === 'add-current-component') { if (currentContent().sections.length >= 30) return toast('Esta página ya tiene 30 secciones.'); const type = ui.category; change(() => { currentContent().sections.push({ id: uid(), type, hidden: false }); ui.canvasMode = 'page'; lastFocusType = type; }); toast('Sección añadida a esta página.'); }
-    else if (action === 'add-section') showModal('Un nuevo espacio para tu historia.', `<p class="modal-lead">Añade una sección a <strong>${esc(currentPage().name)}</strong>. Podrás moverla y personalizarla después.</p><div class="section-chooser">${SECTION_TYPES.map(c => `<button data-action="insert-section" data-value="${c.id}">${icon(c.icon, 22)}<strong>${c.name}</strong><span>${c.variants.length} composiciones</span>${icon('plus', 15)}</button>`).join('')}</div>`, 'wide-modal');
-    else if (action === 'insert-section') { if (currentContent().sections.length >= 30) return toast('Esta página ya tiene 30 secciones.'); change(() => { const s = { id: uid(), type: value, hidden: false }; currentContent().sections.push(s); ui.selectedSection = s.id; lastFocusType = value; }); $('#modal').close(); toast('Sección añadida.'); }
+    else if (action === 'add-section') showPanel('add', {
+      panelBack:b.closest('#inspector') ? {stage:'order', scroll:$('.panel-body').scrollTop} : null
+    });
+    else if (action === 'insert-section') {
+      const sections = currentContent().sections;
+      if (sections.length >= 30) return toast('Esta página ya tiene 30 secciones.');
+      change(() => {
+        const section = {id:uid(), type:value, hidden:false};
+        const after = sections.findIndex(s => s.id === ui.insertAfter);
+        sections.splice(after < 0 ? sections.length : after + 1, 0, section);
+        Object.assign(ui, {stage:'section', selectedSection:section.id, insertAfter:null, canvasMode:'page'});
+        lastFocusType = {id:section.id};
+      }, 'panel');
+      $('#inspector').focus({preventScroll:true});
+      toast('Sección añadida.');
+    }
     else if (action === 'preset') { const p = PRESETS[Number(value)]; change(() => { ['primary', 'accent', 'background', 'text'].forEach((k, i) => state.settings[k] = p.colors[i]); state.settings.headingFont = p.headingFont; state.settings.radius = p.radius; }); guide.complete('identity'); toast(`Estilo ${p.name} aplicado.`); }
     else if (action === 'add-page') showModal('¿Qué más quieres contar?', `<form id="new-page-form"><p class="modal-lead">La nueva página empezará con una portada, contenido, catálogo y una llamada a la acción.</p><label class="field-label"><span>Nombre de la página</span><input name="pageName" placeholder="Por ejemplo, Orquídeas" maxlength="60" required autofocus></label><label class="field-label"><span>Una breve descripción</span><textarea name="pageDescription" rows="3" placeholder="Qué encontrará aquí quien os visite" maxlength="250"></textarea></label><button class="ui-btn primary full-width" type="submit">Crear página ${icon('plus', 16)}</button></form>`);
     else if (action === 'undo' || action === 'redo') { finishEdit(); const from = action === 'undo' ? undoStack : redoStack, to = action === 'undo' ? redoStack : undoStack; if (!from.length) return; to.push(JSON.stringify(state)); state = JSON.parse(from.pop()); persist(); render(); toast(action === 'undo' ? 'Cambio deshecho.' : 'Cambio rehecho.'); }
     else if (action === 'help') guide.open();
+    else if (action === 'setup') setup.open({hasProject:true});
     else if (action === 'preview') openPreview();
     else if (action === 'close-preview') $('#site-modal').close();
     else if (action === 'close-modal') $('#modal').close();
@@ -1108,8 +1339,7 @@
     else if (action === 'download-code') { if (location.protocol === 'file:') return toast('Ya tienes el proyecto descargado: index.html, styles.css, script.js y assets.'); const a = document.createElement('a'); a.href = 'brote-studio.zip'; a.download = 'brote-studio.zip'; a.click(); toast('Descargando el proyecto completo.'); }
     else if (action === 'reset-confirm') showModal('Volver a la semilla.', `<p class="modal-lead">Se recuperará el proyecto Jardín de Abril con sus ajustes iniciales. Puedes exportar tu propuesta antes de continuar.</p><div class="modal-button-row"><button class="ui-btn" data-action="download-json">Exportar primero</button><button class="ui-btn primary" data-action="reset">Restablecer ejemplo</button></div>`);
     else if (action === 'reset') { change(() => { state = makeDefault(); ui.stage = 'pages'; ui.pageGroup = 'Todas'; ui.pageSearch = ''; ui.canvasMode = 'page'; }); $('#modal').close(); toast('El proyecto de ejemplo está listo. Puedes deshacer este cambio.'); }
-    else if (action === 'mobile-pane') { ui.mobilePane = value; $('.app-workspace').className = `app-workspace mobile-${value}`; $$('.mobile-pane-tabs button').forEach(x => x.classList.toggle('active', x.dataset.value === value)); requestAnimationFrame(fitPreview); }
-    else if (action === 'sample-toast') toast('Este es un ejemplo de tu estilo. Los cambios se ven a la derecha.');
+    else if (action === 'sample-toast') toast('Este es un ejemplo de tu estilo. Los cambios se ven en la vista previa.');
     if (beforeSections !== null && beforeSections !== JSON.stringify(currentContent().sections)) guide.complete('content');
   });
   document.addEventListener('submit', event => {
@@ -1121,8 +1351,8 @@
   });
   document.addEventListener('input', event => {
     const el = event.target;
-    if (el.id === 'page-search') { const pos = el.selectionStart; ui.pageSearch = el.value; renderPages(); const e = $('#page-search'); e.focus(); e.setSelectionRange(pos, pos); return; }
-    if (el.id === 'component-search') { const pos = el.selectionStart; ui.componentSearch = el.value; renderRail(); const e = $('#component-search'); e.focus(); e.setSelectionRange(pos, pos); return; }
+    if (el.id === 'page-search') { ui.pageSearch = el.value; $('.page-list').innerHTML = pageChoices(); return; }
+    if (el.id === 'component-search') { ui.componentSearch = el.value; $('#editor-family-list').innerHTML = familyChoices(); return; }
     if (el.matches('[data-setting]') && el.tagName !== 'SELECT' && el.type !== 'checkbox') {
       startEdit(); const key = el.dataset.setting; if (String(state.settings[key]) !== el.value) guide.complete('identity'); state.settings[key] = el.type === 'range' ? Number(el.value) : el.value;
       if (el.type === 'range') { const out = $(`#out-${key}`); if (out) out.textContent = `${el.value}${el.dataset.unit}`; }
@@ -1139,14 +1369,15 @@
   document.addEventListener('change', async event => {
     const el = event.target;
     if (el.matches('[data-page-toggle]')) change(() => { const id = el.dataset.pageToggle; if (id === 'inicio') return; if (el.checked && !state.pages.includes(id)) state.pages.push(id); else state.pages = state.pages.filter(p => p !== id); if (!state.pages.includes(state.activePage)) state.activePage = 'inicio'; });
+    else if (el.id === 'page-group') { ui.pageGroup = el.value; $('.page-list').innerHTML = pageChoices(); }
     else if (el.id === 'preview-page') selectPage(el.value);
-    else if (el.id === 'fullscreen-page') { state.activePage = el.value; persist(); $('#fullscreen-frame').srcdoc = documentHTML(window.BroteSite.render(state, catalog(), { clean: true }), { clean: true }); $('#preview-page').value = el.value; ui.selectedSection = null; ui.canvasMode = 'page'; renderRail(); renderPanel(); renderPreview(); }
+    else if (el.id === 'fullscreen-page') { selectPage(el.value); $('#fullscreen-frame').srcdoc = documentHTML(window.BroteSite.render(state, catalog(), {clean:true}), {clean:true}); }
     else if (el.matches('[data-toggle]')) { guide.complete('identity'); change(() => { state[el.dataset.group || 'settings'][el.dataset.toggle] = el.checked; }, 'preview'); }
     else if (el.matches('select[data-setting]')) { guide.complete('identity'); change(() => { state.settings[el.dataset.setting] = el.dataset.setting === 'columns' ? Number(el.value) : el.value; }, 'panel'); }
-    else if (el.matches('[data-setting],[data-color-text]')) { finishEdit(); if (el.type === 'color' || el.dataset.colorText) { hydrateSamples(); } }
+    else if (el.matches('[data-setting],[data-color-text]')) { finishEdit(); if (el.type === 'color' || el.dataset.colorText) { hydrateSamples(true); } }
     else if (el.id === 'import-file') {
       const f = el.files[0]; if (!f) return; if (f.size > 2 * 1024 * 1024) { toast('El archivo es demasiado grande. El límite es 2 MB.'); el.value = ''; return; }
-      try { const next = validate(JSON.parse(await f.text())); change(() => { state = next; ui.stage = state.generated ? 'design' : 'pages'; ui.category = 'navbar'; ui.canvasMode = 'page'; }); $('#modal').close(); toast('Proyecto importado. Puedes deshacer para recuperar el anterior.'); } catch (error) { toast(error instanceof SyntaxError ? 'El archivo no contiene un JSON válido.' : error.message); } finally { el.value = ''; }
+      try { const next = validate(JSON.parse(await f.text())); change(() => { state = next; Object.assign(ui, {stage:'preview', canvasMode:'page', selectedSection:null, panelBack:null}); }); $('#modal').close(); toast('Proyecto importado. Puedes deshacer para recuperar el anterior.'); } catch (error) { toast(error instanceof SyntaxError ? 'El archivo no contiene un JSON válido.' : error.message); } finally { el.value = ''; }
     }
   });
   window.addEventListener('message', event => {
@@ -1154,20 +1385,30 @@
     if (![frame?.contentWindow, full?.contentWindow].includes(event.source) || event.data?.source !== 'brote-preview') return;
     const data = event.data;
     if (data.type === 'navigate' && state.pages.includes(data.page)) {
-      if (event.source === full?.contentWindow) { state.activePage = data.page; persist(); $('#fullscreen-page').value = data.page; full.srcdoc = documentHTML(window.BroteSite.render(state, catalog(), { clean: true }), { clean: true }); $('#preview-page').value = data.page; ui.selectedSection = null; ui.canvasMode = 'page'; renderRail(); renderPanel(); renderPreview(); }
+      if (event.source === full?.contentWindow) { selectPage(data.page); $('#fullscreen-page').value = data.page; full.srcdoc = documentHTML(window.BroteSite.render(state, catalog(), {clean:true}), {clean:true}); }
       else selectPage(data.page);
     }
+    if (event.source !== frame?.contentWindow) return;
+    if (data.type === 'scroll' && Number.isFinite(data.top)) frame.dataset.scroll = Math.max(0, data.top);
     if (data.type === 'edit') {
-      if (data.sectionType === 'navbar' || data.sectionType === 'footer') return selectCategory(data.sectionType);
-      const s = currentContent().sections.find(s => s.id === data.sectionId); if (!s) return;
-      ui.stage = 'design'; ui.category = 'composition'; ui.selectedSection = s.id; ui.canvasMode = 'page'; renderRail(); renderPanel();
+      if (['navbar','footer'].includes(data.sectionType)) openComponent(data.sectionType);
+      else openSection(data.sectionId);
+    } else if (data.type === 'insert' && currentContent().sections.some(s => s.id === data.after)) {
+      showPanel('add', {insertAfter:data.after});
     }
   });
+  document.addEventListener('toggle', event => {
+    if (event.target.matches('[data-disclosure][open]')) hydrateSamples();
+  }, true);
   document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && !document.querySelector('dialog[open]') && $('#setup').hidden) {
+      const more = $('.editor-more');
+      if (more?.open) { more.open = false; more.querySelector('summary').focus(); }
+      else $('[data-action="close-panel"]')?.click();
+    }
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !e.target.matches('input,textarea,[contenteditable]')) { e.preventDefault(); $(`[data-action="${e.shiftKey ? 'redo' : 'undo'}"]`)?.click(); }
   });
   window.addEventListener('beforeunload', () => { if (!editorStarted) return; try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch {} });
-  $('#site-modal').addEventListener('close', () => { ui.selectedSection = null; ui.canvasMode = 'page'; render(); });
   $('#modal').addEventListener('click', e => { if (e.target === $('#modal')) { const r = e.target.getBoundingClientRect(); if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) e.target.close(); } });
   guide.init();
   const url = new URL(location.href);

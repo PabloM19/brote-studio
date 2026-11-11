@@ -101,7 +101,7 @@ window.createBroteSetup = function (api) {
     document.body.classList.remove('setup-active');
     app.hidden = false;
     const focus = !apply && returnFocus?.isConnected && returnFocus !== document.body
-      ? returnFocus : document.querySelector('#inspector');
+      ? returnFocus : document.querySelector('#editor-workspace');
     focus?.focus({ preventScroll: true });
   }
 

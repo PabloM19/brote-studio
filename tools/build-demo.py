@@ -21,6 +21,7 @@ html = source('index.html').replace('href="assets/favicon.svg"', f'href="{assets
 html = html.replace('<link rel="stylesheet" href="styles.css">', f'<style>{styles}</style>')
 html = html.replace('<link rel="stylesheet" href="ui-refinements.css">', f'<style>{source("ui-refinements.css")}</style>')
 html = html.replace('<link rel="stylesheet" href="setup.css">', f'<style>{source("setup.css")}</style>')
+html = html.replace('<link rel="stylesheet" href="editor.css">', f'<style>{source("editor.css")}</style>')
 html = html.replace('  <script src="setup.js" defer></script>\n', '')
 # Reuse the outer CSS text instead of embedding a second copy of the fonts.
 html = html.replace('  <script src="guide.js" defer></script>\n', '')
