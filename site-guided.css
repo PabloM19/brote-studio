@@ -1,0 +1,9 @@
+/* Grouped navigation for sites configured with the guided setup. */
+.site-root .s-nav-group.is-current>summary{color:var(--s-primary);font-weight:700}
+.site-root .s-nav-group button[aria-current=page]{background:var(--s-soft);font-weight:700}
+.site-root .s-mobile-menu{max-height:65vh;overflow-y:auto}
+.site-root .s-mobile-menu .s-nav-group{padding:2px 0;border-bottom:1px solid var(--s-line);white-space:normal;font-size:.8em}
+.site-root .s-mobile-menu .s-nav-group>summary{justify-content:space-between;padding:12px 0;color:inherit}
+.site-root .s-mobile-menu .s-nav-group>div{position:static;min-width:0;max-width:none;max-height:none;padding:0 0 8px 9px;border:0;box-shadow:none;background:none}
+.site-root .s-mobile-menu .s-nav-group button{padding:10px 12px;text-align:left}
+.site-root .s-features .s-btn{margin-top:6px}

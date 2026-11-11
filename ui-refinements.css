@@ -1,0 +1,80 @@
+/* Additive readability improvements. styles.css and the site preview stay original. */
+.editor-body{--ui-muted:#65725f}
+.editor-body .step-btn{font-size:13px}
+.editor-body .category-nav button{font-size:12px;color:#58694e}
+.editor-body .category-nav button small{font-size:10px;color:#65745c}
+.editor-body .steps-label,.editor-body .rail-section-title,.editor-body .nav-group-label{color:#66765b}
+.editor-body .panel-heading h2{font-size:23px;line-height:1.25}
+.editor-body .panel-heading p{font-size:12px;line-height:1.7;color:#64715d}
+.editor-body .eyebrow{font-size:9px;color:#61744f}
+.editor-body .page-option-text>strong{font-size:12px;font-weight:600}
+.editor-body .page-option-text>span{font-size:11px;line-height:1.5;color:#65725c}
+.editor-body .search-field input,.editor-body .rail-search input{font-size:12px}
+.editor-body .selection-summary,.editor-body .selection-summary>button{font-size:10px;color:#637454}
+.editor-body .variant-caption strong{font-size:12px}
+.editor-body .variant-caption>div>span{font-size:10px;color:#65725c}
+.editor-body .variant-toolbar>span,.editor-body .setting-group-title{font-size:9px;color:#64745a}
+.editor-body .field-label>span,.editor-body .setting-toggle strong,.editor-body .range-field>span{font-size:12px;color:#586b49}
+.editor-body .field-label input,.editor-body .field-label textarea,.editor-body .field-label select{font-size:12px;color:#344d2b}
+.editor-body .scope-note,.editor-body .small-tip{font-size:10px;color:#657653}
+.editor-body .panel-footer>div>strong{font-size:12px}
+.editor-body .panel-footer>div>span{font-size:10px;color:#68785a}
+.editor-body .preset-caption>strong{font-size:12px}.editor-body .preset-caption>span{font-size:11px;color:#65725c}
+.editor-body .quiet-link{color:#506941}
+.editor-body .guide-btn{gap:6px;padding:8px 10px}
+.guide-btn small{font-size:10px;background:#edf1e6;border-radius:4px;padding:2px 5px;color:#536d40}
+.brote-guide{border:1px solid #dce3d4;border-radius:15px;padding:30px;width:min(510px,calc(100vw - 32px));max-height:calc(100dvh - 32px);background:#fff;color:var(--ui-ink);box-shadow:0 24px 90px #172d2440;overflow:auto;font:13px/1.6 var(--ui-font)}
+.brote-guide::backdrop{background:#17352891;backdrop-filter:blur(3px)}
+.guide-heading{display:flex;align-items:flex-start;gap:12px;justify-content:space-between}
+.guide-heading .icon-btn{flex-shrink:0}
+.guide-heading h2{font-size:28px;font-weight:600;letter-spacing:-.9px;line-height:1.15;margin:10px 0 0}
+.guide-lead{font-size:14px;line-height:1.8;color:#61705b;margin:22px 0}
+.guide-welcome-mark{width:84px;height:84px;display:grid;place-items:center;border:1px solid #dce5cd;border-radius:24px;background:#f0f5e6;color:#55763d;margin:26px 0 0}
+.guide-intro-steps{display:flex;gap:10px;justify-content:space-between;margin:24px 0 30px;border-block:1px solid #e7ecdf;padding:17px 0;color:#7b8c6a;font-size:11px}
+.guide-intro-steps strong{font-weight:550;color:#405637;margin-left:5px}
+.brote-guide .ui-btn{font-size:12px;min-height:42px}
+.guide-skip{width:100%;text-align:center;color:#506940;font-size:12px;margin-top:9px;padding:10px;border-radius:6px}
+.guide-skip:hover{background:#f1f5eb}
+.guide-footnote{font-size:10px;line-height:1.6;text-align:center;color:#77836d;margin:18px 0 0}
+.guide-note{font-size:12px;color:#66785a;background:#f3f6ee;border-radius:8px;padding:14px;margin:0 0 22px}
+.guide-progress{height:5px;border-radius:5px;overflow:hidden;background:#edf1e5;margin-top:22px}
+.guide-progress>span{height:100%;display:block;background:#6b8752;transition:width .2s}
+.guide-progress-label{font-size:11px;color:#61754d;margin:7px 0 16px}
+.guide-checklist{padding:0;list-style:none;margin:0 0 24px}
+.guide-checklist li{display:flex;gap:14px;padding:13px 0;border-bottom:1px solid #edf0e7}
+.guide-checklist li>span{width:29px;height:29px;border:1px solid #dce4d2;border-radius:50%;display:grid;place-items:center;flex-shrink:0;font-size:10px;color:#738662}
+.guide-checklist strong{font-size:13px;font-weight:600}.guide-checklist p{font-size:11px;color:#6d7a63;margin:3px 0 0}
+.guide-checklist .is-done>span{background:#607f47;color:#fff;border-color:#607f47}
+.guide-demo{margin-top:22px;border-top:1px solid #e6ecde;padding-top:16px;color:#65765a;font-size:11px}.guide-demo summary{cursor:pointer}.guide-demo p{line-height:1.7}
+.brote-guide.guide-tour{position:fixed;inset:0;width:100%;height:100%;max-width:none;max-height:none;border:0;border-radius:0;margin:0;padding:0;background:transparent;box-shadow:none;overflow:hidden;pointer-events:none}
+.brote-guide.guide-tour::backdrop{background:transparent;backdrop-filter:none}
+.guide-spotlight{position:fixed;border:2px solid #dce9b9;border-radius:11px;box-shadow:0 0 0 9999px #173528b3;pointer-events:none}
+.guide-tour-card{position:fixed;pointer-events:auto;width:min(370px,calc(100vw - 32px));max-height:calc(100dvh - 32px);overflow:auto;padding:23px;background:#fff;border:1px solid #dfe6d6;border-radius:12px;box-shadow:0 16px 50px #122c2533}
+.guide-tour-top{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.guide-tour-card h2{font-size:23px;font-weight:600;letter-spacing:-.6px;line-height:1.2;margin:12px 0}
+.guide-tour-card p{font-size:13px;line-height:1.8;color:#61705b;margin:0}
+.guide-tour-dots{display:flex;gap:5px;margin:20px 0}.guide-tour-dots i{height:4px;width:16px;border-radius:4px;background:#e5ebdd}.guide-tour-dots i.active{background:#69824f;width:28px}
+.guide-tour-actions{display:flex;justify-content:space-between;align-items:center;gap:10px}.guide-tour-actions>div{display:flex;gap:7px}.guide-tour-actions .ui-btn{padding:8px 10px;font-size:11px;min-height:36px}.guide-tour-actions>.quiet-link{font-size:10px}
+@media(max-width:700px){.editor-body .header-actions{gap:6px}.editor-body .guide-btn{display:inline-flex;padding:8px;min-height:34px}.guide-btn>span{display:none}.guide-btn small{font-size:9px}.editor-body .panel-heading p{max-width:none}.editor-body .page-option-text>strong{font-size:13px}.editor-body .page-option-text>span{font-size:11px}.brote-guide{padding:23px}.guide-heading h2{font-size:25px}.guide-tour-card{padding:20px}.guide-tour-card h2{font-size:22px}}
+@media(prefers-reduced-motion:reduce){.guide-progress>span{transition:none}}
+/* Keep the published canvas geometry exactly as in Sites. */
+.editor-body .canvas-area .eyebrow{font-size:7px;color:#9aa78b}
+.editor-body .canvas-area .quiet-link{color:#66745e}
+
+/* The original fitted canvas remains the default. Native sizes can scroll horizontally. */
+.editor-body .canvas-stage.actual-size{overflow-x:auto;justify-content:safe center}
+.editor-body .canvas-size{min-width:38px;width:auto;padding-inline:4px;font-size:10px;font-variant-numeric:tabular-nums}
+.editor-body .canvas-size[aria-pressed=true]{background:#edf1e6;color:#3c5534}
+.editor-body .guide-sidebar{display:block;width:100%;text-align:left;margin-top:12px;padding:6px 0;color:#405638;font-size:10px}
+.guide-sidebar>span{display:flex;justify-content:space-between;gap:4px;align-items:center}
+.guide-sidebar b{font-size:9px;font-variant-numeric:tabular-nums}
+.guide-sidebar>i{display:block;height:4px;border-radius:6px;background:#6b8752;margin:6px 0;box-shadow:none}
+.guide-sidebar>small{display:block;font-size:9px;color:#607252}
+.guide-checklist .is-next{background:#f5f8ef}
+.guide-checklist .quiet-link{min-height:28px;font-size:11px}
+.guide-activation{display:flex;align-items:center;gap:7px;color:#567146;font-size:11px;margin:13px 0 0}
+.type-weights{margin:0 0 18px}
+.type-weights>strong{display:block;color:#586b49;font-size:12px;font-weight:550;margin-bottom:7px}
+.type-weights>div{display:flex;flex-wrap:wrap;gap:5px}
+.editor-body .type-weights button{padding:5px 8px;min-height:31px}
+.editor-body .type-weights button[aria-pressed=true]{background:#edf1e6!important;border-color:#93a981!important;color:#244638}
